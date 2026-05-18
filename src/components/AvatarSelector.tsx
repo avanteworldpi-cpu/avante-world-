@@ -5,8 +5,7 @@ import {
   saveUserAvatarSelection,
   getAvatarStorageUrl,
   MarketplaceAvatar,
-  UserCustomAvatar,
-  supabase
+  UserCustomAvatar
 } from '../lib/supabase';
 import { AvatarGallery } from './AvatarGallery';
 import { AvatarUpload } from './AvatarUpload';
