@@ -275,33 +275,6 @@
             transform: scale(1.05);
         }
 
-        /* Location info panel */
-        .location-info {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            z-index: 1000;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(15px);
-            border-radius: 16px;
-            padding: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            max-width: 300px;
-        }
-
-        .location-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #ffffff;
-        }
-
-        .location-coords {
-            font-size: 14px;
-            color: rgba(255, 255, 255, 0.7);
-            font-family: monospace;
-        }
 
         /* Loading indicator */
         .loading-indicator {
@@ -514,11 +487,6 @@
                 gap: 8px;
             }
 
-            .location-info {
-                bottom: 10px;
-                left: 10px;
-                max-width: calc(100vw - 20px);
-            }
 
             .character-controls {
                 bottom: 10px;
@@ -577,11 +545,6 @@
         </div>
     </div>
 
-    <!-- Location Info Panel -->
-    <div id="location-info" class="location-info" style="display: none;">
-        <div class="location-title" id="location-title">Selected Location</div>
-        <div class="location-coords" id="location-coords">Lat: 0.000, Lng: 0.000</div>
-    </div>
 
 
     <!-- Zoom Level Indicator -->
@@ -931,13 +894,7 @@
              * Show location information panel
              */
             showLocationInfo() {
-                if (!this.selectedLocation) return;
-
-                const [lng, lat] = this.selectedLocation;
-                document.getElementById('location-title').textContent = 'Exploring Location';
-                document.getElementById('location-coords').textContent = 
-                    `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}`;
-                document.getElementById('location-info').style.display = 'block';
+                // Location info panel removed
             }
 
             /**
