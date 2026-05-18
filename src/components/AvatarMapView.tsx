@@ -200,17 +200,6 @@ export function AvatarMapView({ avatarUrl, startLocation }: AvatarMapViewProps) 
         </div>
       </div>
 
-      <div className="absolute bottom-6 left-6 z-50 bg-gray-900 bg-opacity-90 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
-        <div className="text-white text-sm">
-          <p className="text-gray-300 mb-2">CONTROLS</p>
-          <ul className="text-xs text-gray-400 space-y-1">
-            <li>W/↑ - Move Forward</li>
-            <li>S/↓ - Move Backward</li>
-            <li>A/← - Strafe Left</li>
-            <li>D/→ - Strafe Right</li>
-          </ul>
-        </div>
-      </div>
     </div>
   );
 }
