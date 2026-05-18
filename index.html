@@ -583,17 +583,6 @@
         <div class="location-coords" id="location-coords">Lat: 0.000, Lng: 0.000</div>
     </div>
 
-    <!-- Character Controls Hint -->
-    <div id="character-controls" class="character-controls">
-        <div class="controls-title">Character Controls</div>
-        <div>Use WASD or Arrow keys to move</div>
-        <div class="controls-keys">
-            <span class="key">W</span>
-            <span class="key">A</span>
-            <span class="key">S</span>
-            <span class="key">D</span>
-        </div>
-    </div>
 
     <!-- Zoom Level Indicator -->
     <div id="zoom-indicator" class="zoom-indicator">
@@ -982,9 +971,6 @@
             addCharacter() {
                 const sharedAvatarUrl = localStorage.getItem('sharedAvatarUrl');
                 this.character = new Avatar(this.mainMap, this.selectedLocation, sharedAvatarUrl);
-
-                // Show character controls
-                document.getElementById('character-controls').classList.add('visible');
 
                 // Show zoom indicator and update on zoom change
                 document.getElementById('zoom-indicator').classList.add('visible');
