@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { loadAvatarGLB, getAnimationClip, playAnimation, stopAnimation, createIdleCharacter } from './glb-loader';
+import { loadAvatarGLB, loadCharacterGLB, getAnimationClip, playAnimation, stopAnimation, createIdleCharacter } from './glb-loader';
 import { AVATAR_URLS, AvatarType, SHARED_AVATAR_URL } from './supabase';
 
 export interface AvatarConfig {
@@ -17,6 +17,12 @@ export class AvatarCharacter {
   private currentAction: THREE.AnimationAction | null = null;
   private idleAction: THREE.AnimationAction | null = null;
   private walkAction: THREE.AnimationAction | null = null;
+
+  private animations: Map<string, THREE.AnimationAction> = new Map();
+  private currentAnimName = 'IDLE';
+  private isLoadingCharacter = false;
+  private useCharacterGLB = false;
+  private jumpTimeout: NodeJS.Timeout | null = null;
 
   private velocity = { x: 0, y: 0 };
   private speed: number;
@@ -54,11 +60,71 @@ export class AvatarCharacter {
   }
 
   private async init(): Promise<void> {
-    if (this.avatarUrl) {
-      await this.loadAvatarModel();
-    } else {
-      this.createPlaceholderAvatar();
+    this.isLoadingCharacter = true;
+    try {
+      await this.loadCharacterModel();
+      this.useCharacterGLB = true;
+      this.isLoadingCharacter = false;
+    } catch (error) {
+      console.error('Failed to load character.glb, falling back to avatar:', error);
+      this.isLoadingCharacter = false;
+      if (this.avatarUrl) {
+        await this.loadAvatarModel();
+      } else {
+        this.createPlaceholderAvatar();
+      }
     }
+  }
+
+  private async loadCharacterModel(): Promise<void> {
+    try {
+      const loaded = await loadCharacterGLB();
+      this.avatarModel = loaded.scene;
+      this.mixer = loaded.mixer;
+
+      this.avatarModel.position.set(0, 0, 0);
+      this.scene.add(this.avatarModel);
+
+      this.buildAnimationMap(loaded.animations);
+      this.switchAnim('IDLE');
+
+      console.log('Character model loaded successfully');
+    } catch (error) {
+      console.error('Failed to load character model:', error);
+      throw error;
+    }
+  }
+
+  private buildAnimationMap(animations: THREE.AnimationClip[]): void {
+    if (!this.mixer) return;
+
+    animations.forEach((clip) => {
+      const action = this.mixer!.clipAction(clip);
+      this.animations.set(clip.name, action);
+    });
+
+    console.log('Animation map built:', Array.from(this.animations.keys()));
+  }
+
+  private switchAnim(name: string): void {
+    if (this.currentAnimName === name || !this.mixer) return;
+
+    const prevAction = this.animations.get(this.currentAnimName);
+    const nextAction = this.animations.get(name);
+
+    if (!nextAction) {
+      console.warn(`Animation not found: ${name}`);
+      return;
+    }
+
+    if (prevAction) {
+      nextAction.reset().play();
+      prevAction.crossFadeTo(nextAction, 0.2, true);
+    } else {
+      nextAction.reset().play();
+    }
+
+    this.currentAnimName = name;
   }
 
   private async loadAvatarModel(): Promise<void> {
@@ -99,16 +165,29 @@ export class AvatarCharacter {
   private setupKeyboardControls(): void {
     window.addEventListener('keydown', (e) => {
       const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-        e.preventDefault();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '].includes(key)) {
+        if (key !== ' ' && key !== 'shift') {
+          e.preventDefault();
+        }
         this.keys[key] = true;
+
+        if (key === ' ' && this.useCharacterGLB) {
+          e.preventDefault();
+          this.switchAnim('JUMP');
+          if (this.jumpTimeout) clearTimeout(this.jumpTimeout);
+          this.jumpTimeout = setTimeout(() => {
+            this.jumpTimeout = null;
+          }, 1000);
+        }
       }
     });
 
     window.addEventListener('keyup', (e) => {
       const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-        e.preventDefault();
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '].includes(key)) {
+        if (key !== ' ' && key !== 'shift') {
+          e.preventDefault();
+        }
         this.keys[key] = false;
       }
     });
@@ -125,22 +204,28 @@ export class AvatarCharacter {
   private updateMovement(): void {
     let targetVx = 0;
     let targetVy = 0;
+    let moveX = 0;
+    let moveZ = 0;
 
     if (this.keys['w'] || this.keys['arrowup']) {
       targetVy += this.speed;
       this.direction = 0;
+      moveZ = 1;
     }
     if (this.keys['s'] || this.keys['arrowdown']) {
       targetVy -= this.speed;
       this.direction = 180;
+      moveZ = -1;
     }
     if (this.keys['a'] || this.keys['arrowleft']) {
       targetVx -= this.speed;
       this.direction = 90;
+      moveX = -1;
     }
     if (this.keys['d'] || this.keys['arrowright']) {
       targetVx += this.speed;
       this.direction = -90;
+      moveX = 1;
     }
 
     const acceleration = 0.2;
@@ -154,27 +239,55 @@ export class AvatarCharacter {
         this.position.lng += this.velocity.x;
         this.position.lat += this.velocity.y;
 
-        this.avatarModel.rotation.y = THREE.MathUtils.degToRad(this.direction);
+        if (this.useCharacterGLB) {
+          const targetAngle = Math.atan2(moveX, moveZ);
+          this.avatarModel.rotation.y = THREE.MathUtils.lerp(
+            this.avatarModel.rotation.y,
+            targetAngle,
+            0.1
+          );
 
-        if (!this.wasMoving && this.mixer) {
-          if (this.idleAction) {
-            this.idleAction.stop();
+          if (!this.wasMoving && this.currentAnimName !== 'JUMP') {
+            if (this.keys['shift'] && (this.keys['w'] || this.keys['arrowup'])) {
+              this.switchAnim('RUNNING');
+            } else if (this.keys['a'] || this.keys['arrowleft']) {
+              this.switchAnim('LEFT TURN');
+            } else if (this.keys['d'] || this.keys['arrowright']) {
+              this.switchAnim('RIGHT TURN');
+            } else {
+              this.switchAnim('WALKING');
+            }
           }
-          if (this.walkAction) {
-            this.walkAction.reset();
-            this.walkAction.play();
+        } else {
+          this.avatarModel.rotation.y = THREE.MathUtils.degToRad(this.direction);
+          if (!this.wasMoving && this.mixer) {
+            if (this.idleAction) {
+              this.idleAction.stop();
+            }
+            if (this.walkAction) {
+              this.walkAction.reset();
+              this.walkAction.play();
+            }
           }
         }
         this.wasMoving = true;
-      } else if (this.wasMoving && this.mixer) {
-        if (this.walkAction) {
-          this.walkAction.stop();
-        }
-        if (this.idleAction) {
-          this.idleAction.reset();
-          this.idleAction.play();
+      } else if (this.wasMoving) {
+        if (this.useCharacterGLB && this.currentAnimName !== 'JUMP') {
+          this.switchAnim('IDLE');
+        } else if (this.mixer) {
+          if (this.walkAction) {
+            this.walkAction.stop();
+          }
+          if (this.idleAction) {
+            this.idleAction.reset();
+            this.idleAction.play();
+          }
         }
         this.wasMoving = false;
+      }
+
+      if (this.useCharacterGLB && this.jumpTimeout === null && this.currentAnimName === 'JUMP') {
+        this.switchAnim('IDLE');
       }
     }
   }
@@ -197,6 +310,9 @@ export class AvatarCharacter {
   }
 
   public dispose(): void {
+    if (this.jumpTimeout) {
+      clearTimeout(this.jumpTimeout);
+    }
     if (this.avatarModel) {
       this.scene.remove(this.avatarModel);
       this.avatarModel.traverse((node) => {

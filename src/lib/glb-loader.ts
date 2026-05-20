@@ -47,6 +47,40 @@ export async function loadAvatarGLB(url: string): Promise<LoadedAvatar> {
   });
 }
 
+export async function loadCharacterGLB(): Promise<LoadedAvatar> {
+  const loader = new GLTFLoader();
+
+  return new Promise((resolve, reject) => {
+    loader.load(
+      '/assets/character.glb',
+      (gltf) => {
+        const scene = gltf.scene;
+        const animations = gltf.animations || [];
+        const mixer = new THREE.AnimationMixer(scene);
+
+        scene.traverse((node) => {
+          if ((node as THREE.Mesh).isMesh) {
+            const mesh = node as THREE.Mesh;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.frustumCulled = false;
+          }
+        });
+
+        scene.scale.set(0.00005, 0.00005, 0.00005);
+        scene.position.set(0, 0, 0);
+
+        resolve({ scene, animations, mixer });
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load character from /assets/character.glb', error);
+        reject(error);
+      }
+    );
+  });
+}
+
 // ---------------------------------------------------------
 // ANIMATION HELPERS
 // ---------------------------------------------------------
