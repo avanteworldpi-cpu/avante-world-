@@ -20,6 +20,7 @@ export function AvatarMapView({ avatarUrl, startLocation }: AvatarMapViewProps) 
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const avatarRef = useRef<AvatarCharacter | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const [isLoadingCharacter, setIsLoadingCharacter] = useState(true);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -113,6 +114,18 @@ export function AvatarMapView({ avatarUrl, startLocation }: AvatarMapViewProps) 
     });
     avatarRef.current = avatar;
 
+    setIsLoadingCharacter(true);
+    const checkLoaded = setInterval(() => {
+      if (avatarRef.current?.getModel()) {
+        setIsLoadingCharacter(false);
+        clearInterval(checkLoaded);
+      }
+    }, 100);
+    const maxLoadTime = setTimeout(() => {
+      setIsLoadingCharacter(false);
+      clearInterval(checkLoaded);
+    }, 5000);
+
     const handleResize = () => {
       const newWidth = threeContainerRef.current?.clientWidth || width;
       const newHeight = threeContainerRef.current?.clientHeight || height;
@@ -183,6 +196,8 @@ export function AvatarMapView({ avatarUrl, startLocation }: AvatarMapViewProps) 
       if (threeContainerRef.current?.contains(renderer.domElement)) {
         threeContainerRef.current.removeChild(renderer.domElement);
       }
+      clearInterval(checkLoaded);
+      clearTimeout(maxLoadTime);
     };
   }, [avatarUrl, startLocation]);
 
@@ -190,6 +205,15 @@ export function AvatarMapView({ avatarUrl, startLocation }: AvatarMapViewProps) 
     <div className="w-full h-screen flex gap-4 p-4 bg-gray-900">
       <div className="flex-1 rounded-lg overflow-hidden shadow-lg" ref={mapContainerRef} />
       <div className="flex-1 rounded-lg overflow-hidden shadow-lg" ref={threeContainerRef} />
+
+      {isLoadingCharacter && (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-gray-900 bg-opacity-95 backdrop-blur-sm rounded-xl px-8 py-6 border border-gray-700 shadow-2xl">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-3 border-gray-600 border-t-white rounded-full animate-spin"></div>
+            <p className="text-white text-sm font-medium">Loading character...</p>
+          </div>
+        </div>
+      )}
 
       <div className="absolute top-6 left-6 z-50 bg-gray-900 bg-opacity-90 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
         <div className="text-white">
