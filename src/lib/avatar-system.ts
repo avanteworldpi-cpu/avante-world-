@@ -35,9 +35,9 @@ export class AvatarCharacter {
 
   private config: Required<AvatarConfig>;
 
-  constructor(scene: THREE.Scene, startLocation: [number, number], avatarUrl: string | null, config: AvatarConfig = {}) {
+  constructor(scene: THREE.Scene, startLocation: [lat: number, lng: number], avatarUrl: string | null, config: AvatarConfig = {}) {
     this.scene = scene;
-    this.position = { lng: startLocation[0], lat: startLocation[1] };
+    this.position = { lat: startLocation[0], lng: startLocation[1] };
     this.avatarUrl = avatarUrl || this.getDefaultAvatarUrl();
 
     this.config = {
@@ -292,13 +292,13 @@ export class AvatarCharacter {
     }
   }
 
-  public getPosition(): [number, number] {
-    return [this.position.lng, this.position.lat];
+  public getPosition(): [lat: number, lng: number] {
+    return [this.position.lat, this.position.lng];
   }
 
-  public setPosition(lng: number, lat: number): void {
-    this.position.lng = lng;
+  public setPosition(lat: number, lng: number): void {
     this.position.lat = lat;
+    this.position.lng = lng;
   }
 
   public getModel(): THREE.Group | null {

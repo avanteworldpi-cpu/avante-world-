@@ -146,7 +146,7 @@ export function AvatarMapView({ avatarUrl, startLocation }: AvatarMapViewProps) 
 
       avatar.update(deltaTime);
 
-      const [lng, lat] = avatar.getPosition();
+      const [lat, lng] = avatar.getPosition();
       if (mapRef.current && markerRef.current && arrowMarkerRef.current) {
         markerRef.current.setLatLng([lat, lng]);
         arrowMarkerRef.current.setLatLng([lat, lng]);
