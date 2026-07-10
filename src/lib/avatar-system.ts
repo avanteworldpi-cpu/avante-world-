@@ -2,6 +2,35 @@ import * as THREE from 'three';
 import { loadAvatarGLB, loadCharacterGLB, getAnimationClip, playAnimation, stopAnimation, createIdleCharacter } from './glb-loader';
 import { AVATAR_URLS, AvatarType, SHARED_AVATAR_URL } from './supabase';
 
+export const METERS_PER_DEGREE_LAT = 111320;
+
+export interface PlanePosition {
+  x: number;
+  z: number;
+}
+
+export interface GeoOrigin {
+  lat: number;
+  lng: number;
+}
+
+/**
+ * Converts a geographic coordinate into scene-plane metres relative to a fixed
+ * origin: x = metres east of origin, z = metres north. One scene unit is one metre.
+ *
+ * Longitude is scaled by cos(origin.lat) — the *origin's* latitude, never the
+ * current one, so the projection stays linear and invertible. Omitting the cosine
+ * understates east-west distance by ~12% at Johannesburg but ~61% at London,
+ * which is how a units error hides at one latitude and not another.
+ */
+export function geoToPlane(lat: number, lng: number, origin: GeoOrigin): PlanePosition {
+  const lngScale = Math.cos(origin.lat * (Math.PI / 180));
+  return {
+    x: (lng - origin.lng) * METERS_PER_DEGREE_LAT * lngScale,
+    z: (lat - origin.lat) * METERS_PER_DEGREE_LAT
+  };
+}
+
 export interface AvatarConfig {
   scale?: number;
   speed?: number;
@@ -11,6 +40,7 @@ export interface AvatarConfig {
 export class AvatarCharacter {
   private scene: THREE.Scene;
   private position: { lng: number; lat: number };
+  private readonly origin: GeoOrigin;
   private avatarUrl: string | null;
   private avatarModel: THREE.Group | null = null;
   private mixer: THREE.AnimationMixer | null = null;
@@ -38,6 +68,7 @@ export class AvatarCharacter {
   constructor(scene: THREE.Scene, startLocation: [lat: number, lng: number], avatarUrl: string | null, config: AvatarConfig = {}) {
     this.scene = scene;
     this.position = { lat: startLocation[0], lng: startLocation[1] };
+    this.origin = { lat: startLocation[0], lng: startLocation[1] };
     this.avatarUrl = avatarUrl || this.getDefaultAvatarUrl();
 
     this.config = {
@@ -195,10 +226,23 @@ export class AvatarCharacter {
 
   public update(deltaTime: number = 0.016): void {
     this.updateMovement();
+    this.syncModelToPosition();
 
     if (this.mixer) {
       this.mixer.update(deltaTime);
     }
+  }
+
+  /**
+   * The single place the mesh's plane position is derived from the authoritative
+   * geographic position. Leaves y untouched for future ground-height sampling.
+   */
+  private syncModelToPosition(): void {
+    if (!this.avatarModel) return;
+
+    const { x, z } = geoToPlane(this.position.lat, this.position.lng, this.origin);
+    this.avatarModel.position.x = x;
+    this.avatarModel.position.z = z;
   }
 
   private updateMovement(): void {
