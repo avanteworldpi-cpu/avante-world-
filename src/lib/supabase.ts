@@ -7,7 +7,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export type AvatarType = 'avatar_1' | 'avatar_2' | 'avatar_3';
 
-export const SHARED_AVATAR_URL = `${supabaseUrl}/storage/v1/object/public/avatars/shared-avatar.glb`;
+export const SHARED_AVATAR_URL = '/assets/female_boss_character.glb';
 
 export const AVATAR_URLS: Record<AvatarType, string> = {
   avatar_1: 'https://models.readyplayer.me/65b8c5df1e3e30001fa5c457.glb',
