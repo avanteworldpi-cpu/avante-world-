@@ -21,3 +21,11 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Agent tooling scaffolding, vendored by `npx skills add supabase/agent-skills`.
+# Regenerated on demand; the upstream content ships without a LICENSE file, and
+# .claude/skills/* are symlinks into .agents/ that do not survive a Windows
+# checkout without core.symlinks enabled.
+.agents/
+skills-lock.json
+.claude/
