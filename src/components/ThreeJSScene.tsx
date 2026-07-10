@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { AvatarCharacter } from '../lib/avatar-system';
+import { AvatarCharacter, WALK_SPEED_MPS } from '../lib/avatar-system';
 
 interface ThreeJSSceneProps {
   avatarUrl: string | null;
@@ -66,7 +66,7 @@ export function ThreeJSScene({ avatarUrl, startLocation }: ThreeJSSceneProps) {
 
     const avatar = new AvatarCharacter(scene, startLocation, avatarUrl, {
       scale: 1,
-      speed: 0.00004,
+      speed: WALK_SPEED_MPS,
       animationSpeed: 0.1,
     });
     avatarRef.current = avatar;

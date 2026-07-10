@@ -31,8 +31,28 @@ export function geoToPlane(lat: number, lng: number, origin: GeoOrigin): PlanePo
   };
 }
 
+/** Real-world movement speeds, metres per second. */
+export const WALK_SPEED_MPS = 1.4;
+export const RUN_SPEED_MPS = 3.8;
+
+/**
+ * Rate of exponential approach to target velocity, per second. Picked so the
+ * per-frame smoothing factor lands near the original 0.2 at 60fps
+ * (1 - e^(-13.4/60) ~= 0.2), keeping the old acceleration feel while making it
+ * independent of frame rate.
+ */
+const ACCELERATION_RATE = 13.4;
+
+/**
+ * requestAnimationFrame stops firing in a backgrounded tab, so the first frame
+ * after refocus can report a deltaTime of minutes. Capping it stops a held key
+ * from teleporting the character across the world in a single step.
+ */
+const MAX_FRAME_DELTA_SECONDS = 0.1;
+
 export interface AvatarConfig {
   scale?: number;
+  /** Walking speed in metres per second. Running uses RUN_SPEED_MPS. */
   speed?: number;
   animationSpeed?: number;
 }
@@ -56,6 +76,8 @@ export class AvatarCharacter {
 
   private velocity = { x: 0, y: 0 };
   private speed: number;
+  private readonly metersToLatDegrees: number;
+  private readonly metersToLngDegrees: number;
   private keys: { [key: string]: boolean } = {};
   private direction = 0;
   private isMoving = false;
@@ -73,12 +95,18 @@ export class AvatarCharacter {
 
     this.config = {
       scale: config.scale ?? 1,
-      speed: config.speed ?? 0.00004,
+      speed: config.speed ?? WALK_SPEED_MPS,
       animationSpeed: config.animationSpeed ?? 0.1
     };
 
     this.speed = this.config.speed;
     this.animationSpeed = this.config.animationSpeed;
+
+    // Inverse of geoToPlane's scale, so a speed in metres/second becomes degrees/second
+    // on each axis. Derived from the same constants, so the two can never disagree.
+    const lngScale = Math.cos(this.origin.lat * (Math.PI / 180));
+    this.metersToLatDegrees = 1 / METERS_PER_DEGREE_LAT;
+    this.metersToLngDegrees = 1 / (METERS_PER_DEGREE_LAT * lngScale);
 
     this.setupKeyboardControls();
     this.init();
@@ -225,7 +253,7 @@ export class AvatarCharacter {
   }
 
   public update(deltaTime: number = 0.016): void {
-    this.updateMovement();
+    this.updateMovement(deltaTime);
     this.syncModelToPosition();
 
     if (this.mixer) {
@@ -245,43 +273,51 @@ export class AvatarCharacter {
     this.avatarModel.position.z = z;
   }
 
-  private updateMovement(): void {
+  private updateMovement(deltaTime: number): void {
+    const dt = Math.min(deltaTime, MAX_FRAME_DELTA_SECONDS);
+
     let targetVx = 0;
     let targetVy = 0;
     let moveX = 0;
     let moveZ = 0;
 
+    // Velocity is degrees/second, derived from a metres/second speed so that the
+    // distance covered on the plane is the same whichever way the character faces.
+    const speedMps = this.keys['shift'] ? RUN_SPEED_MPS : this.speed;
+    const latStep = speedMps * this.metersToLatDegrees;
+    const lngStep = speedMps * this.metersToLngDegrees;
+
     if (this.keys['w'] || this.keys['arrowup']) {
-      targetVy += this.speed;
+      targetVy += latStep;
       this.direction = 0;
       moveZ = 1;
     }
     if (this.keys['s'] || this.keys['arrowdown']) {
-      targetVy -= this.speed;
+      targetVy -= latStep;
       this.direction = 180;
       moveZ = -1;
     }
     if (this.keys['a'] || this.keys['arrowleft']) {
-      targetVx -= this.speed;
+      targetVx -= lngStep;
       this.direction = 90;
       moveX = -1;
     }
     if (this.keys['d'] || this.keys['arrowright']) {
-      targetVx += this.speed;
+      targetVx += lngStep;
       this.direction = -90;
       moveX = 1;
     }
 
-    const acceleration = 0.2;
-    this.velocity.x += (targetVx - this.velocity.x) * acceleration;
-    this.velocity.y += (targetVy - this.velocity.y) * acceleration;
+    const smoothing = 1 - Math.exp(-ACCELERATION_RATE * dt);
+    this.velocity.x += (targetVx - this.velocity.x) * smoothing;
+    this.velocity.y += (targetVy - this.velocity.y) * smoothing;
 
     this.isMoving = Math.abs(this.velocity.x) > 0.000001 || Math.abs(this.velocity.y) > 0.000001;
 
     if (this.avatarModel) {
       if (this.isMoving) {
-        this.position.lng += this.velocity.x;
-        this.position.lat += this.velocity.y;
+        this.position.lng += this.velocity.x * dt;
+        this.position.lat += this.velocity.y * dt;
 
         if (this.useCharacterGLB) {
           const targetAngle = Math.atan2(moveX, moveZ);

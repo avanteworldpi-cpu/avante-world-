@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as THREE from 'three';
-import { AvatarCharacter } from '../lib/avatar-system';
+import { AvatarCharacter, WALK_SPEED_MPS } from '../lib/avatar-system';
 
 interface AvatarMapViewProps {
   avatarUrl: string | null;
@@ -109,7 +109,7 @@ export function AvatarMapView({ avatarUrl, startLocation }: AvatarMapViewProps) 
 
     const avatar = new AvatarCharacter(scene, startLocation, avatarUrl, {
       scale: 1,
-      speed: 0.00004,
+      speed: WALK_SPEED_MPS,
       animationSpeed: 0.1,
     });
     avatarRef.current = avatar;
