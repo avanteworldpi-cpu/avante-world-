@@ -58,6 +58,13 @@ export function MapSelector({ onLocationSelect }: MapSelectorProps) {
 
     return () => {
       map.off('click', handleMapClick);
+      // Tear the Leaflet instance down, not just the listener. Without this the
+      // container keeps its _leaflet_id, and the next L.map() on it throws
+      // "Map container is already initialized" — which StrictMode's
+      // mount/cleanup/mount cycle triggers on every dev mount.
+      map.remove();
+      mapRef.current = null;
+      markerRef.current = null;
     };
   }, []);
 
