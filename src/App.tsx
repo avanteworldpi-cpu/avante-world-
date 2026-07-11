@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { LogOut } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { Auth } from './components/Auth';
 import { AvatarSelector } from './components/AvatarSelector';
 import { MapSelector } from './components/MapSelector';
 import { AvatarMapView } from './components/AvatarMapView';
+import { AppShell } from './components/shell/AppShell';
 import { supabase } from './lib/supabase';
 
 function App() {
@@ -38,35 +38,38 @@ function App() {
   if (isLoading) return <div>Loading...</div>;
   if (!user) return <Auth />;
 
-  return (
-    <>
-      <button
-        onClick={() => supabase.auth.signOut()}
-        title="Sign out"
-        className="fixed top-4 right-4 z-[1000] flex items-center gap-2 px-3 py-2 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-sm font-medium text-gray-700 shadow-sm hover:bg-white hover:text-gray-900 transition-colors"
-      >
-        <LogOut className="w-4 h-4" />
-        Sign out
-      </button>
+  // Onboarding stays full-screen and outside the shell: the nav tabs are meaningless
+  // before you've picked an avatar and a spawn point.
+  if (!avatarSelected) {
+    return <AvatarSelector onSelect={() => setAvatarSelected(true)} />;
+  }
 
-      {!avatarSelected ? (
-        <AvatarSelector onSelect={() => setAvatarSelected(true)} />
-      ) : !locationSelected ? (
-        <MapSelector
-          onLocationSelect={(lat, lng) => {
-            setStartLocation([lat, lng]);
-            setLocationSelected(true);
-          }}
-        />
-      ) : !startLocation ? (
-        <div>Loading game...</div>
-      ) : (
-        <AvatarMapView
-          avatarUrl={localStorage.getItem('selectedAvatarUrl') || localStorage.getItem('sharedAvatarUrl')}
-          startLocation={startLocation}
-        />
+  if (!locationSelected || !startLocation) {
+    return (
+      <MapSelector
+        onLocationSelect={(lat, lng) => {
+          setStartLocation([lat, lng]);
+          setLocationSelected(true);
+        }}
+      />
+    );
+  }
+
+  const avatarUrl = localStorage.getItem('selectedAvatarUrl') || localStorage.getItem('sharedAvatarUrl');
+
+  return (
+    <AppShell
+      userEmail={user.email}
+      locationLabel={`${startLocation[0].toFixed(3)}, ${startLocation[1].toFixed(3)}`}
+      onSignOut={() => supabase.auth.signOut()}
+      // `startLocation` is held in state, so its identity is stable across the shell's
+      // re-renders (tab clicks, panel toggles). If it were rebuilt inline here it would
+      // be a new array every render, retriggering AvatarMapView's effect and tearing the
+      // whole scene down on every click.
+      renderWorld={(active) => (
+        <AvatarMapView avatarUrl={avatarUrl} startLocation={startLocation} active={active} />
       )}
-    </>
+    />
   );
 }
 
