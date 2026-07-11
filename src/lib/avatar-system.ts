@@ -69,7 +69,10 @@ export class AvatarCharacter {
   private walkAction: THREE.AnimationAction | null = null;
 
   private animations: Map<string, THREE.AnimationAction> = new Map();
-  private currentAnimName = 'IDLE';
+  // Empty, not 'IDLE', so the initial switchAnim('IDLE') on load isn't skipped by
+  // the currentAnimName === name guard — otherwise idle never plays and the
+  // character stands in bind pose (T-pose) until first movement.
+  private currentAnimName = '';
   private isLoadingCharacter = false;
   private useCharacterGLB = false;
   private jumpTimeout: NodeJS.Timeout | null = null;
@@ -159,7 +162,9 @@ export class AvatarCharacter {
 
     animations.forEach((clip) => {
       const action = this.mixer!.clipAction(clip);
-      this.animations.set(clip.name, action);
+      // Key by upper-case name so lookups are case-insensitive: clip names vary
+      // by asset (character.glb ships "Walking", female_boss_character.glb "WALKING").
+      this.animations.set(clip.name.toUpperCase(), action);
     });
 
     console.log('Animation map built:', Array.from(this.animations.keys()));
@@ -168,8 +173,8 @@ export class AvatarCharacter {
   private switchAnim(name: string): void {
     if (this.currentAnimName === name || !this.mixer) return;
 
-    const prevAction = this.animations.get(this.currentAnimName);
-    const nextAction = this.animations.get(name);
+    const prevAction = this.animations.get(this.currentAnimName.toUpperCase());
+    const nextAction = this.animations.get(name.toUpperCase());
 
     if (!nextAction) {
       console.warn(`Animation not found: ${name}`);

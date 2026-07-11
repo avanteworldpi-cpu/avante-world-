@@ -67,7 +67,9 @@ export async function loadCharacterGLB(): Promise<LoadedAvatar> {
           }
         });
 
-        scene.scale.set(0.00005, 0.00005, 0.00005);
+        // character.glb geometry is authored at metre scale (~1.78 units tall),
+        // matching the scene's 1 unit = 1 metre convention (see geoToPlane).
+        scene.scale.set(1, 1, 1);
         scene.position.set(0, 0, 0);
 
         resolve({ scene, animations, mixer });
