@@ -82,6 +82,7 @@ export class AvatarCharacter {
   private readonly metersToLatDegrees: number;
   private readonly metersToLngDegrees: number;
   private keys: { [key: string]: boolean } = {};
+  private enabled = true;
   private direction = 0;
   private isMoving = false;
   private wasMoving = false;
@@ -226,35 +227,75 @@ export class AvatarCharacter {
     console.log('Placeholder avatar created');
   }
 
+  /**
+   * True when the key event is destined for a text field. Movement keys are
+   * swallowed with preventDefault(), so without this guard typing "swap" into a
+   * search box would insert no 'w', 'a' or 's', block the space bar, and walk the
+   * character across the world at the same time.
+   */
+  private isTypingTarget(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null;
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toUpperCase();
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+  }
+
+  private shouldIgnoreKeyEvent(e: KeyboardEvent): boolean {
+    return !this.enabled || this.isTypingTarget(e.target);
+  }
+
+  /**
+   * Enable/disable keyboard control, e.g. while a non-World tab is showing.
+   * Held keys and velocity are cleared so the character doesn't resume walking
+   * from a key that was never released.
+   */
+  public setEnabled(enabled: boolean): void {
+    if (this.enabled === enabled) return;
+    this.enabled = enabled;
+    if (!enabled) {
+      this.keys = {};
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+    }
+  }
+
+  // Bound once so dispose() can actually remove them again.
+  private handleKeyDown = (e: KeyboardEvent): void => {
+    if (this.shouldIgnoreKeyEvent(e)) return;
+
+    const key = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '].includes(key)) {
+      if (key !== ' ' && key !== 'shift') {
+        e.preventDefault();
+      }
+      this.keys[key] = true;
+
+      if (key === ' ' && this.useCharacterGLB) {
+        e.preventDefault();
+        this.switchAnim('JUMP');
+        if (this.jumpTimeout) clearTimeout(this.jumpTimeout);
+        this.jumpTimeout = setTimeout(() => {
+          this.jumpTimeout = null;
+        }, 1000);
+      }
+    }
+  };
+
+  private handleKeyUp = (e: KeyboardEvent): void => {
+    if (this.shouldIgnoreKeyEvent(e)) return;
+
+    const key = e.key.toLowerCase();
+    if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '].includes(key)) {
+      if (key !== ' ' && key !== 'shift') {
+        e.preventDefault();
+      }
+      this.keys[key] = false;
+    }
+  };
+
   private setupKeyboardControls(): void {
-    window.addEventListener('keydown', (e) => {
-      const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '].includes(key)) {
-        if (key !== ' ' && key !== 'shift') {
-          e.preventDefault();
-        }
-        this.keys[key] = true;
-
-        if (key === ' ' && this.useCharacterGLB) {
-          e.preventDefault();
-          this.switchAnim('JUMP');
-          if (this.jumpTimeout) clearTimeout(this.jumpTimeout);
-          this.jumpTimeout = setTimeout(() => {
-            this.jumpTimeout = null;
-          }, 1000);
-        }
-      }
-    });
-
-    window.addEventListener('keyup', (e) => {
-      const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift', ' '].includes(key)) {
-        if (key !== ' ' && key !== 'shift') {
-          e.preventDefault();
-        }
-        this.keys[key] = false;
-      }
-    });
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
   }
 
   public update(deltaTime: number = 0.016): void {
@@ -395,6 +436,11 @@ export class AvatarCharacter {
   }
 
   public dispose(): void {
+    // These were never removed: every mount/unmount cycle left two live window
+    // listeners belonging to a dead AvatarCharacter, still mutating its own keys.
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
+
     if (this.jumpTimeout) {
       clearTimeout(this.jumpTimeout);
     }
