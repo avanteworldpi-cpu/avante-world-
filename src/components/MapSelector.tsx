@@ -19,7 +19,11 @@ export function MapSelector({ onLocationSelect }: MapSelectorProps) {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const map = L.map(containerRef.current).setView([40.7128, -74.006], 13);
+    // Zoom control moved to the top-right: it defaults to the top-left, directly
+    // underneath the "Select Starting Location" card, and the card now sits above
+    // Leaflet's control layer — leaving it top-left would bury the zoom buttons.
+    const map = L.map(containerRef.current, { zoomControl: false }).setView([40.7128, -74.006], 13);
+    L.control.zoom({ position: 'topright' }).addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',
@@ -75,11 +79,17 @@ export function MapSelector({ onLocationSelect }: MapSelectorProps) {
     }
   };
 
+  // Leaflet's own stack: panes sit at z-index 200-700 and its control containers at
+  // 1000, and .leaflet-container creates no stacking context, so those compete
+  // directly with these overlays. Tailwind's z-50 is literally z-index 50 -- below
+  // the map pane at 400 -- so both of these rendered *underneath* the tiles. They
+  // were still hit-testable, because Leaflet sets pointer-events:none on the tile
+  // container, which is exactly why this reads as "in the DOM but unusable".
   return (
     <div className="w-full h-screen relative">
       <div ref={containerRef} className="w-full h-full" />
 
-      <div className="absolute top-6 left-6 z-50 bg-white rounded-lg shadow-lg p-4 max-w-xs">
+      <div className="absolute top-6 left-6 z-[1100] bg-white rounded-lg shadow-lg p-4 max-w-xs">
         <div className="flex items-start gap-3">
           <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-1" />
           <div>
@@ -104,7 +114,7 @@ export function MapSelector({ onLocationSelect }: MapSelectorProps) {
       <button
         onClick={handleStart}
         disabled={isSnapping}
-        className="absolute bottom-6 right-6 z-50 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium shadow-lg"
+        className="absolute bottom-6 right-6 z-[1100] bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium shadow-lg"
       >
         {isSnapping ? 'Preparing...' : 'Start Adventure'}
       </button>
