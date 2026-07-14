@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
 import { Auth } from './components/Auth';
 import { AvatarSelector } from './components/AvatarSelector';
@@ -35,7 +36,19 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (isLoading) return <div>Loading...</div>;
+  // Unstyled, this was a white flash with default black serif text on every page load --
+  // the very first thing a user sees, before the session check resolves.
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-dusk-950">
+        <div className="flex items-center gap-3 text-dusk-400">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          <span className="text-sm font-medium">Loading…</span>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) return <Auth />;
 
   // Onboarding stays full-screen and outside the shell: the nav tabs are meaningless

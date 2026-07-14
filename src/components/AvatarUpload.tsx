@@ -131,8 +131,8 @@ export function AvatarUpload({ onUploadSuccess }: AvatarUploadProps) {
         onDragLeave={() => setIsDragging(false)}
         className={`relative p-8 rounded-lg border-2 border-dashed transition-colors ${
           isDragging
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+            ? 'border-accent bg-accent/10'
+            : 'border-dusk-700 bg-dusk-950 hover:border-dusk-600'
         } ${isUploading ? 'pointer-events-none opacity-75' : 'cursor-pointer'}`}
       >
         <input
@@ -145,27 +145,27 @@ export function AvatarUpload({ onUploadSuccess }: AvatarUploadProps) {
         />
 
         <div className="flex flex-col items-center justify-center text-center">
-          <Upload className="w-12 h-12 text-gray-400 mb-3" />
-          <h3 className="font-semibold text-gray-900 mb-1">
+          <Upload className="w-12 h-12 text-dusk-400 mb-3" />
+          <h3 className="font-semibold text-dusk-100 mb-1">
             {isUploading ? 'Uploading...' : 'Drop your avatar file here'}
           </h3>
-          <p className="text-sm text-gray-600 mb-3">
+          <p className="text-sm text-dusk-300 mb-3">
             or click to browse for a file
           </p>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-dusk-400">
             GLB or GLTF files up to {MAX_FILE_SIZE / (1024 * 1024)}MB
           </p>
         </div>
 
         {isUploading && (
           <div className="mt-4">
-            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-dusk-800 rounded-full h-2 overflow-hidden">
               <div
-                className="bg-blue-500 h-full transition-all duration-300"
+                className="bg-accent h-full transition-all duration-300"
                 style={{ width: `${uploadProgress}%` }}
               />
             </div>
-            <p className="text-xs text-gray-600 text-center mt-2">
+            <p className="text-xs text-dusk-400 text-center mt-2">
               {uploadProgress}%
             </p>
           </div>
@@ -176,18 +176,18 @@ export function AvatarUpload({ onUploadSuccess }: AvatarUploadProps) {
         <div
           className={`flex gap-3 p-4 rounded-lg ${
             message.type === 'success'
-              ? 'bg-green-50 border border-green-200'
-              : 'bg-red-50 border border-red-200'
+              ? 'bg-success/10 border border-success/40'
+              : 'bg-danger/10 border border-danger/40'
           }`}
         >
           {message.type === 'success' ? (
-            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+            <CheckCircle className="w-5 h-5 text-success flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-danger flex-shrink-0" />
           )}
           <p
             className={`text-sm font-medium ${
-              message.type === 'success' ? 'text-green-800' : 'text-red-800'
+              message.type === 'success' ? 'text-success' : 'text-danger'
             }`}
           >
             {message.text}

@@ -52,20 +52,20 @@ export function AvatarGallery({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
 
   return (
     <div className="w-full">
-      <div className="flex gap-4 mb-6 border-b border-gray-200">
+      <div className="flex gap-4 mb-6 border-b border-dusk-800">
         <button
           onClick={() => setActiveTab('marketplace')}
           className={`px-4 py-3 font-medium transition-colors ${
             activeTab === 'marketplace'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'text-accent border-b-2 border-accent'
+              : 'text-dusk-400 hover:text-dusk-100'
           }`}
         >
           Marketplace
@@ -74,8 +74,8 @@ export function AvatarGallery({
           onClick={() => setActiveTab('uploads')}
           className={`px-4 py-3 font-medium transition-colors ${
             activeTab === 'uploads'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'text-accent border-b-2 border-accent'
+              : 'text-dusk-400 hover:text-dusk-100'
           }`}
         >
           My Uploads ({customAvatars.length})
@@ -83,7 +83,7 @@ export function AvatarGallery({
       </div>
 
       {error && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+        <div className="mb-4 p-4 bg-danger/10 border border-danger/40 rounded-lg text-danger text-sm">
           {error}
         </div>
       )}
@@ -91,7 +91,7 @@ export function AvatarGallery({
       {activeTab === 'marketplace' && (
         <div className="space-y-4">
           {marketplaceAvatars.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-dusk-400">
               No marketplace avatars available
             </div>
           ) : (
@@ -113,9 +113,9 @@ export function AvatarGallery({
         <div className="space-y-4">
           {customAvatars.length === 0 ? (
             <div className="text-center py-12">
-              <Upload className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-              <p className="text-gray-500 font-medium">No custom avatars yet</p>
-              <p className="text-gray-400 text-sm">Upload a GLB or GLTF file to get started</p>
+              <Upload className="w-12 h-12 mx-auto text-dusk-600 mb-3" />
+              <p className="text-dusk-300 font-medium">No custom avatars yet</p>
+              <p className="text-dusk-400 text-sm">Upload a GLB or GLTF file to get started</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -147,11 +147,11 @@ function AvatarCard({ avatar, isSelected, onClick }: AvatarCardProps) {
       onClick={onClick}
       className={`p-4 rounded-lg border-2 transition-all text-left ${
         isSelected
-          ? 'border-blue-500 bg-blue-50 shadow-lg'
-          : 'border-gray-200 hover:border-blue-300 bg-white hover:shadow-md'
+          ? 'border-accent bg-accent/10 shadow-lg'
+          : 'border-dusk-800 hover:border-dusk-700 bg-dusk-900 hover:shadow-md'
       }`}
     >
-      <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 rounded-md mb-3 flex items-center justify-center overflow-hidden">
+      <div className="aspect-square bg-dusk-950 border border-dusk-800 rounded-md mb-3 flex items-center justify-center overflow-hidden">
         {avatar.thumbnail_url ? (
           <img
             src={avatar.thumbnail_url}
@@ -159,13 +159,13 @@ function AvatarCard({ avatar, isSelected, onClick }: AvatarCardProps) {
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="text-gray-400 text-sm">No preview</div>
+          <div className="text-dusk-400 text-sm">No preview</div>
         )}
       </div>
-      <h3 className="font-semibold text-gray-900">{avatar.name}</h3>
-      <p className="text-xs text-gray-500 capitalize mb-2">{avatar.gender_type}</p>
+      <h3 className="font-semibold text-dusk-100">{avatar.name}</h3>
+      <p className="text-xs text-dusk-400 capitalize mb-2">{avatar.gender_type}</p>
       {avatar.description && (
-        <p className="text-sm text-gray-600 line-clamp-2">{avatar.description}</p>
+        <p className="text-sm text-dusk-300 line-clamp-2">{avatar.description}</p>
       )}
     </button>
   );
@@ -183,21 +183,21 @@ function CustomAvatarCard({ avatar, isSelected, onClick }: CustomAvatarCardProps
       onClick={onClick}
       className={`p-4 rounded-lg border-2 transition-all text-left ${
         isSelected
-          ? 'border-green-500 bg-green-50 shadow-lg'
-          : 'border-gray-200 hover:border-green-300 bg-white hover:shadow-md'
+          ? 'border-accent bg-accent/10 shadow-lg'
+          : 'border-dusk-800 hover:border-dusk-700 bg-dusk-900 hover:shadow-md'
       }`}
     >
-      <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-200 rounded-md mb-3 flex items-center justify-center">
+      <div className="aspect-square bg-dusk-950 border border-dusk-800 rounded-md mb-3 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-2xl text-gray-400 mb-1">3D</div>
-          <div className="text-xs text-gray-500 uppercase font-semibold">{avatar.file_type}</div>
+          <div className="text-2xl text-dusk-400 mb-1">3D</div>
+          <div className="text-xs text-dusk-400 uppercase font-semibold">{avatar.file_type}</div>
         </div>
       </div>
-      <h3 className="font-semibold text-gray-900 truncate">{avatar.filename}</h3>
-      <p className="text-xs text-gray-500 mb-2">
+      <h3 className="font-semibold text-dusk-100 truncate">{avatar.filename}</h3>
+      <p className="text-xs text-dusk-400 mb-2">
         {(avatar.file_size / 1024).toFixed(1)} KB
       </p>
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-dusk-400">
         {new Date(avatar.uploaded_at).toLocaleDateString()}
       </p>
     </button>

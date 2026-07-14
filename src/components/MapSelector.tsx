@@ -89,22 +89,22 @@ export function MapSelector({ onLocationSelect }: MapSelectorProps) {
     <div className="w-full h-screen relative">
       <div ref={containerRef} className="w-full h-full" />
 
-      <div className="absolute top-6 left-6 z-[1100] bg-white rounded-lg shadow-lg p-4 max-w-xs">
+      <div className="absolute top-6 left-6 z-[1100] bg-dusk-950 border border-dusk-800 rounded-lg shadow-2xl p-4 max-w-xs">
         <div className="flex items-start gap-3">
-          <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-1" />
+          <MapPin className="w-5 h-5 text-accent flex-shrink-0 mt-1" />
           <div>
-            <h2 className="font-semibold text-gray-900 mb-1">Select Starting Location</h2>
-            <p className="text-sm text-gray-600 mb-3">Click on the map to set your starting position</p>
+            <h2 className="font-display text-base font-semibold text-dusk-50 mb-1">Select Starting Location</h2>
+            <p className="text-sm text-dusk-300 mb-3">Click on the map to set your starting position</p>
             {isSnapping && (
-              <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
+              <div className="flex items-center gap-2 text-sm text-accent mt-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Snapping to nearest road...
               </div>
             )}
             {snappedRoadName && lastSnappedLocation && (
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <p className="text-xs text-gray-500 mb-1">Snapped to road:</p>
-                <p className="text-sm font-medium text-green-600">{snappedRoadName}</p>
+              <div className="mt-3 pt-3 border-t border-dusk-800">
+                <p className="text-xs text-dusk-400 mb-1">Snapped to road:</p>
+                <p className="text-sm font-medium text-success">{snappedRoadName}</p>
               </div>
             )}
           </div>
@@ -114,7 +114,7 @@ export function MapSelector({ onLocationSelect }: MapSelectorProps) {
       <button
         onClick={handleStart}
         disabled={isSnapping}
-        className="absolute bottom-6 right-6 z-[1100] bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium shadow-lg"
+        className="absolute bottom-6 right-6 z-[1100] bg-accent text-dusk-950 px-6 py-3 rounded-lg hover:bg-accent-strong disabled:bg-dusk-700 disabled:text-dusk-400 disabled:cursor-not-allowed transition-colors font-semibold shadow-2xl"
       >
         {isSnapping ? 'Preparing...' : 'Start Adventure'}
       </button>

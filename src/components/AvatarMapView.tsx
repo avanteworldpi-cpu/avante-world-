@@ -313,27 +313,27 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   // positioned ancestor they anchor to the viewport and float over the shell's nav
   // rail and top bar instead of staying inside this pane.
   return (
-    <div className="relative w-full h-full overflow-hidden bg-gray-900">
+    <div className="relative w-full h-full overflow-hidden bg-dusk-900">
       <div className="absolute inset-0" ref={threeContainerRef} />
 
       {/* Minimap: real-world position readout, pinned to the corner of the viewport. */}
       <div
-        className="absolute bottom-6 right-6 z-40 w-56 h-40 rounded-lg overflow-hidden border border-gray-700 shadow-2xl"
+        className="absolute bottom-6 right-6 z-40 w-56 h-40 rounded-lg overflow-hidden border border-dusk-700 shadow-2xl"
         ref={mapContainerRef}
       />
 
       {isLoadingCharacter && (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-gray-900 bg-opacity-95 backdrop-blur-sm rounded-xl px-8 py-6 border border-gray-700 shadow-2xl">
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-dusk-950 bg-opacity-95 backdrop-blur-sm rounded-xl px-8 py-6 border border-dusk-800 shadow-2xl">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-3 border-gray-600 border-t-white rounded-full animate-spin"></div>
-            <p className="text-white text-sm font-medium">Loading character...</p>
+            <div className="w-8 h-8 border-3 border-dusk-700 border-t-accent rounded-full animate-spin"></div>
+            <p className="text-dusk-100 text-sm font-medium">Loading character...</p>
           </div>
         </div>
       )}
 
-      <div className="absolute top-6 left-6 z-40 bg-gray-900 bg-opacity-90 backdrop-blur-sm rounded-lg p-4 border border-gray-700">
-        <div className="text-white">
-          <p className="text-xs text-gray-400 mb-1">COORDINATES</p>
+      <div className="absolute top-6 left-6 z-40 bg-dusk-950 bg-opacity-90 backdrop-blur-sm rounded-lg p-4 border border-dusk-800">
+        <div className="text-dusk-100">
+          <p className="text-xs text-dusk-400 mb-1">COORDINATES</p>
           <p ref={coordsRef} className="text-sm font-mono">
             {startLocation[0].toFixed(5)}, {startLocation[1].toFixed(5)}
           </p>

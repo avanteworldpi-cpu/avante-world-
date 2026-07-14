@@ -100,23 +100,23 @@ export function AvatarSelector({ onSelect }: AvatarSelectorProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-dusk-950">
         <div className="text-center">
           <div className="inline-block animate-pulse">
-            <div className="w-12 h-12 bg-blue-500 rounded-full mb-4 mx-auto"></div>
+            <div className="w-12 h-12 bg-accent rounded-full mb-4 mx-auto"></div>
           </div>
-          <p className="text-gray-600 font-medium">Loading your avatar options...</p>
+          <p className="text-dusk-400 font-medium">Loading your avatar options...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4">
+    <div className="min-h-screen bg-dusk-950 py-12 px-4">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Choose Your Avatar</h1>
-          <p className="text-gray-600">Select a marketplace avatar or upload your own custom GLB/GLTF model</p>
+          <h1 className="font-display text-4xl font-semibold text-dusk-50 mb-2">Choose Your Avatar</h1>
+          <p className="text-dusk-300">Select a marketplace avatar or upload your own custom GLB/GLTF model</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -130,21 +130,21 @@ export function AvatarSelector({ onSelect }: AvatarSelectorProps) {
               isCustomSelected={!!selectedCustomAvatar}
             />
 
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="bg-dusk-900 rounded-lg border border-dusk-800 overflow-hidden">
               <button
                 onClick={() => setShowUploadSection(!showUploadSection)}
-                className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                className="w-full px-6 py-4 flex items-center justify-between hover:bg-dusk-800/60 transition-colors"
               >
-                <span className="font-semibold text-gray-900">Upload Custom Avatar</span>
+                <span className="font-semibold text-dusk-100">Upload Custom Avatar</span>
                 <ChevronDown
-                  className={`w-5 h-5 text-gray-500 transition-transform ${
+                  className={`w-5 h-5 text-dusk-400 transition-transform ${
                     showUploadSection ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
               {showUploadSection && (
-                <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+                <div className="px-6 py-4 border-t border-dusk-800 bg-dusk-950">
                   <AvatarUpload onUploadSuccess={loadUserSelection} />
                 </div>
               )}
@@ -152,30 +152,30 @@ export function AvatarSelector({ onSelect }: AvatarSelectorProps) {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-6 sticky top-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Preview</h2>
+            <div className="bg-dusk-900 rounded-lg border border-dusk-800 p-6 sticky top-6">
+              <h2 className="font-display text-lg font-semibold text-dusk-50 mb-4">Preview</h2>
 
               {previewUrl ? (
                 <div>
                   <AvatarPreviewViewer modelUrl={previewUrl} showSpinning={true} />
-                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm font-medium text-blue-900">
+                  <div className="mt-4 p-3 bg-accent/10 rounded-lg border border-accent/40">
+                    <p className="text-sm font-medium text-dusk-100">
                       {selectedMarketplaceAvatar
                         ? selectedMarketplaceAvatar.name
                         : selectedCustomAvatar?.filename}
                     </p>
                     {selectedMarketplaceAvatar && (
-                      <p className="text-xs text-blue-700 capitalize">
+                      <p className="text-xs text-accent capitalize">
                         {selectedMarketplaceAvatar.gender_type}
                       </p>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="h-80 bg-gray-100 rounded-lg flex items-center justify-center">
+                <div className="h-80 bg-dusk-950 border border-dusk-800 rounded-lg flex items-center justify-center">
                   <div className="text-center">
-                    <div className="text-gray-400 mb-2">👤</div>
-                    <p className="text-sm text-gray-600">Select an avatar to preview</p>
+                    <div className="text-dusk-400 mb-2">👤</div>
+                    <p className="text-sm text-dusk-400">Select an avatar to preview</p>
                   </div>
                 </div>
               )}
@@ -187,11 +187,11 @@ export function AvatarSelector({ onSelect }: AvatarSelectorProps) {
                   !selectedCustomAvatar ||
                   isConfirming
                 }
-                className="w-full mt-4 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="w-full mt-4 px-4 py-3 bg-accent hover:bg-accent-strong disabled:bg-dusk-700 disabled:text-dusk-400 text-dusk-950 font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 {isConfirming ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-dusk-950 border-t-transparent rounded-full animate-spin" />
                     Confirming...
                   </>
                 ) : (

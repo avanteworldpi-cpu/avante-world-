@@ -49,6 +49,15 @@ export default {
         danger: {
           DEFAULT: '#E5484D',
         },
+
+        /**
+         * Confirmation. The semantic counterpart to `danger`, not a second accent -- upload
+         * succeeded, road snapped. Kept out of the accent so amber never has to mean two
+         * things at once. 6.13:1 on dusk-950 and 5.68:1 on dusk-900, so it is valid as text.
+         */
+        success: {
+          DEFAULT: '#30A46C',
+        },
       },
 
       fontFamily: {

@@ -29,7 +29,10 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
       const height = containerRef.current.clientHeight || 300;
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xf3f4f6);
+      // dusk-950. The lights below are raised to compensate: against the old light-grey
+      // backdrop the model picked up plenty of bounce, and the same intensities over a dark
+      // surface leave it muddy and short of silhouette definition.
+      scene.background = new THREE.Color(0x0a0d19);
       sceneRef.current = scene;
 
       const camera = new THREE.PerspectiveCamera(
@@ -49,12 +52,18 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
 
       containerRef.current.appendChild(renderer.domElement);
 
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
       scene.add(ambientLight);
 
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.4);
       directionalLight.position.set(5, 10, 7);
       scene.add(directionalLight);
+
+      // Rim light from behind and opposite the key. A single key light can't separate the
+      // silhouette from a dark backdrop; this keeps the edges readable.
+      const rimLight = new THREE.DirectionalLight(0xffffff, 0.7);
+      rimLight.position.set(-4, 4, -6);
+      scene.add(rimLight);
 
       const loader = new GLTFLoader();
       loader.load(
@@ -140,18 +149,18 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
   return (
     <div
       ref={containerRef}
-      className="w-full h-80 rounded-lg bg-gray-100 relative overflow-hidden"
+      className="w-full h-80 rounded-lg bg-dusk-950 border border-dusk-800 relative overflow-hidden"
     >
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-50">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <div className="absolute inset-0 flex items-center justify-center bg-dusk-950 bg-opacity-60">
+          <Loader2 className="w-8 h-8 animate-spin text-accent" />
         </div>
       )}
 
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-50">
-          <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
-          <p className="text-sm text-red-700 font-medium">Preview unavailable</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-danger/10">
+          <AlertCircle className="w-8 h-8 text-danger mb-2" />
+          <p className="text-sm text-danger font-medium">Preview unavailable</p>
         </div>
       )}
     </div>
