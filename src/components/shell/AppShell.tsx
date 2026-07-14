@@ -23,7 +23,7 @@ export function AppShell({ userEmail, locationLabel, onSignOut, renderWorld }: A
   const isWorld = activeTab === 'world';
 
   return (
-    <div className="w-full h-screen flex bg-gray-900 overflow-hidden">
+    <div className="w-full h-screen flex bg-dusk-900 overflow-hidden">
       <NavRail activeTab={activeTab} onSelect={setActiveTab} />
 
       <div className="flex-1 min-w-0 flex flex-col">

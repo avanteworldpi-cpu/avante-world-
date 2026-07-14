@@ -10,28 +10,31 @@ interface PlaceholderScreenProps {
 
 function PlaceholderScreen({ icon: Icon, title, description, items }: PlaceholderScreenProps) {
   return (
-    <div className="w-full h-full overflow-y-auto bg-gray-900 p-8">
+    <div className="w-full h-full overflow-y-auto bg-dusk-900 p-8">
       <div className="max-w-3xl">
         <div className="flex items-center gap-3 mb-1">
-          <Icon className="w-6 h-6 text-blue-400" />
-          <h1 className="text-2xl font-bold text-white">{title}</h1>
+          {/* Muted, not accent: section icons aren't a trust context, and amber on four
+              screen headers would stop the accent reading as sparing. */}
+          <Icon className="w-6 h-6 text-dusk-300" />
+          <h1 className="font-display text-2xl font-semibold text-dusk-50">{title}</h1>
         </div>
-        <p className="text-gray-400 mb-6">{description}</p>
+        <p className="text-dusk-300 mb-6">{description}</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {items.map((item) => (
             <div
               key={item.title}
-              className="rounded-lg bg-gray-950 border border-gray-800 p-4 hover:border-gray-700 transition-colors"
+              className="rounded-lg bg-dusk-950 border border-dusk-800 p-4 hover:border-dusk-700 transition-colors"
             >
-              <div className="h-24 rounded-md bg-gray-900 border border-gray-800 mb-3" />
-              <h3 className="text-sm font-semibold text-gray-100">{item.title}</h3>
-              <p className="text-xs text-gray-500 mt-0.5">{item.meta}</p>
+              <div className="h-24 rounded-md bg-dusk-900 border border-dusk-800 mb-3" />
+              <h3 className="text-sm font-semibold text-dusk-100">{item.title}</h3>
+              {/* dusk-400, the text floor. dusk-500/600 fail AA. */}
+              <p className="text-xs text-dusk-400 mt-0.5">{item.meta}</p>
             </div>
           ))}
         </div>
 
-        <p className="mt-8 text-xs text-gray-600">
+        <p className="mt-8 text-xs text-dusk-400">
           Placeholder content — this screen isn't built yet.
         </p>
       </div>

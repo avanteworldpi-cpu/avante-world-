@@ -19,7 +19,7 @@ interface NavRailProps {
 
 export function NavRail({ activeTab, onSelect }: NavRailProps) {
   return (
-    <nav className="w-16 shrink-0 bg-gray-950 border-r border-gray-800 flex flex-col items-center gap-1 py-4">
+    <nav className="w-16 shrink-0 bg-dusk-950 border-r border-dusk-800 flex flex-col items-center gap-1 py-4">
       {TABS.map((tab) => {
         const Icon = TAB_ICONS[tab];
         const isActive = tab === activeTab;
@@ -31,14 +31,22 @@ export function NavRail({ activeTab, onSelect }: NavRailProps) {
             title={TAB_LABELS[tab]}
             aria-label={TAB_LABELS[tab]}
             aria-current={isActive ? 'page' : undefined}
+            /*
+             * The active state gets its own treatment -- a tinted surface plus an accent
+             * edge bar -- rather than the verification ring. "Active" is navigation state,
+             * not trust, and reusing the ring here would erode what a closed ring means
+             * for exactly the reason it was kept off the minimap.
+             *
+             * dusk-400 (not 500) for the inactive label: 500 fails AA as text.
+             */
             className={`group relative w-12 h-12 rounded-lg flex flex-col items-center justify-center gap-0.5 transition-colors ${
               isActive
-                ? 'bg-blue-500/15 text-blue-400'
-                : 'text-gray-500 hover:text-gray-200 hover:bg-gray-800/60'
+                ? 'bg-accent/10 text-accent'
+                : 'text-dusk-400 hover:text-dusk-200 hover:bg-dusk-800/60'
             }`}
           >
             {isActive && (
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-0.5 rounded-r bg-blue-400" />
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 h-6 w-0.5 rounded-r bg-accent" />
             )}
             <Icon className="w-5 h-5" />
             <span className="text-[9px] font-medium leading-none">{TAB_LABELS[tab]}</span>
