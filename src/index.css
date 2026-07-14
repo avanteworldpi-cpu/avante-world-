@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * The heading arrow inside the minimap pin. This rule always intended to smooth the
+ * arrow's rotation, but it previously sat on the marker root, where it would have
+ * animated the position Leaflet writes there rather than the heading. It now applies to
+ * the inner SVG, which is the only thing we rotate.
+ */
 .avatar-direction-marker {
+  display: block;
+  transform-origin: 50% 50%; /* spin about the character, not the SVG's top-left corner */
   transition: transform 0.1s linear;
 }

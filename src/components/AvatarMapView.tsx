@@ -62,12 +62,28 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       }),
     }).addTo(map);
 
+    // A divIcon, not an icon: Leaflet positions a marker by writing
+    // `transform: translate3d(...)` onto its root element, so rotating that same root
+    // (which the previous L.icon forced us to do) destroys the translate and pins the
+    // arrow to the map-pane origin. Wrapping the SVG lets Leaflet keep the root and us
+    // rotate the child.
+    //
+    // A plain heading arrow, deliberately not the verification ring: "which way am I
+    // facing" is not a trust signal, and sharing the motif would dilute what a closed
+    // ring means.
     const arrowMarker = L.marker([startLocation[0], startLocation[1]], {
-      icon: L.icon({
-        iconUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMTYgMkwzMCAzMEgySiBmaWxsPSIjMzU4OEZCIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjEiLz48L3N2Zz4=',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        className: 'avatar-direction-marker',
+      icon: L.divIcon({
+        className: 'avatar-heading-icon',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        html:
+          '<svg class="avatar-direction-marker" width="28" height="28" viewBox="0 0 28 28" ' +
+          'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+          // Wedge with its apex at the top, so it points north at 0deg -- which is the
+          // character's heading when rotation.y is 0.
+          '<path d="M14 3 L20 15 L14 12 L8 15 Z" fill="#3E82F6" stroke="white" ' +
+          'stroke-width="1.5" stroke-linejoin="round" />' +
+          '</svg>',
       }),
     }).addTo(map);
 
@@ -202,11 +218,19 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
 
         const avatarModel = avatar.getModel();
         if (avatarModel) {
+          // rotation.y is a compass bearing already: 0 faces north (+z) and it increases
+          // clockwise toward east (+x), matching geoToPlane's axes. CSS rotate() is also
+          // clockwise from up, so the bearing maps straight through. The previous `+ 180`
+          // would have pointed the arrow south while walking north.
           const rotation = avatarModel.rotation.y;
-          const angle = (THREE.MathUtils.radToDeg(rotation) + 180) % 360;
-          const element = arrowMarkerRef.current.getElement();
-          if (element) {
-            element.style.transform = `rotate(${angle}deg)`;
+          const headingDeg = ((THREE.MathUtils.radToDeg(rotation) % 360) + 360) % 360;
+
+          // Rotate the SVG *inside* the icon. Rotating the marker root would overwrite
+          // the translate3d Leaflet just wrote there, and would also make the CSS
+          // transition animate the marker's position rather than only its heading.
+          const arrowSvg = arrowMarkerRef.current.getElement()?.querySelector('svg');
+          if (arrowSvg) {
+            (arrowSvg as SVGElement).style.transform = `rotate(${headingDeg}deg)`;
           }
 
           const targetDistance = 6;
