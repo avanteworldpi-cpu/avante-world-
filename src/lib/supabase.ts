@@ -296,6 +296,21 @@ export async function deleteCustomAvatar(id: string): Promise<boolean> {
   }
 }
 
+/**
+ * Resolves a stored avatar path to a loadable URL.
+ *
+ * The paths that reach here are heterogeneous by design, so a bare prefix is wrong:
+ *   - custom uploads store a bucket-relative key (`user-uploads/<uid>/<file>`) — prepend
+ *     the public bucket URL;
+ *   - marketplace rows store a static bundle path (`/assets/character.glb`) served from
+ *     the web root — pass through untouched;
+ *   - some sources hold a full URL (e.g. Ready Player Me `https://…`) — pass through.
+ *
+ * Blindly prefixing produced `.../avatars//assets/character.glb`, which 400s. Anything
+ * that is already absolute (leading slash, protocol, or blob:/data:) is left alone; only
+ * a bucket-relative key gets the prefix.
+ */
 export function getAvatarStorageUrl(path: string): string {
+  if (/^(https?:|blob:|data:|\/)/.test(path)) return path;
   return `${supabaseUrl}/storage/v1/object/public/avatars/${path}`;
 }
