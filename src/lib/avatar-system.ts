@@ -44,6 +44,15 @@ export const RUN_SPEED_MPS = 3.8;
 const ACCELERATION_RATE = 13.4;
 
 /**
+ * Rate of exponential approach to the target facing, per second. Derived like
+ * ACCELERATION_RATE: chosen so the per-frame turn factor lands at the original flat
+ * 0.1 at 60fps (1 - e^(-6.32/60) ~= 0.1, i.e. -60*ln(0.9)), keeping the same turn feel
+ * while making it frame-rate independent. Movement was already time-based (107ba41);
+ * this extends that to rotation, which the earlier pass left as a flat lerp.
+ */
+const TURN_RATE = 6.32;
+
+/**
  * requestAnimationFrame stops firing in a backgrounded tab, so the first frame
  * after refocus can report a deltaTime of minutes. Capping it stops a held key
  * from teleporting the character across the world in a single step.
@@ -367,10 +376,15 @@ export class AvatarCharacter {
 
         if (this.useCharacterGLB) {
           const targetAngle = Math.atan2(moveX, moveZ);
+          // Time-based, not a flat per-frame factor: turning was frame-rate dependent
+          // (slower on slow devices) while translation was already time-based. The
+          // exponential form makes the recurrence exact -- the facing at a given elapsed
+          // time is the same at any frame rate. Only the rate changes; the target and the
+          // linear-toward-target path (and its wrap behaviour) are untouched.
           this.avatarModel.rotation.y = THREE.MathUtils.lerp(
             this.avatarModel.rotation.y,
             targetAngle,
-            0.1
+            1 - Math.exp(-TURN_RATE * dt)
           );
 
           if (!this.wasMoving && this.currentAnimName !== 'JUMP') {
