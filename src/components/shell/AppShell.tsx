@@ -39,7 +39,7 @@ export function AppShell({ userEmail, locationLabel, onSignOut, renderWorld }: A
           {/*
             The World pane is never unmounted. Switching tabs renders the other
             screen *over* it rather than replacing it, so the character keeps its
-            position and character.glb is not refetched on every tab change.
+            position and the character model is not refetched on every tab change.
 
             Overlaying rather than hiding with `display:none` is deliberate: a
             display:none container reports clientWidth/clientHeight of 0, which

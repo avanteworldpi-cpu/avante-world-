@@ -297,7 +297,7 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   }, [avatarUrl, startLocation]);
 
   // Pause/resume without unmounting: the scene survives, so the character keeps its
-  // position and character.glb is not refetched when the user comes back to World.
+  // position and the character model is not refetched when the user comes back to World.
   useEffect(() => {
     activeRef.current = active;
     avatarRef.current?.setEnabled(active);

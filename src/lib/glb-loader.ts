@@ -52,7 +52,7 @@ export async function loadCharacterGLB(): Promise<LoadedAvatar> {
 
   return new Promise((resolve, reject) => {
     loader.load(
-      '/assets/character.glb',
+      '/assets/male_humanoid.glb',
       (gltf) => {
         const scene = gltf.scene;
         const animations = gltf.animations || [];
@@ -67,8 +67,9 @@ export async function loadCharacterGLB(): Promise<LoadedAvatar> {
           }
         });
 
-        // character.glb geometry is authored at metre scale (~1.78 units tall),
-        // matching the scene's 1 unit = 1 metre convention (see geoToPlane).
+        // male_humanoid.glb geometry is authored at metre scale (~1.78 units tall,
+        // verified via a parent Empty node), matching the scene's 1 unit = 1 metre
+        // convention (see geoToPlane).
         scene.scale.set(1, 1, 1);
         scene.position.set(0, 0, 0);
 
@@ -76,7 +77,7 @@ export async function loadCharacterGLB(): Promise<LoadedAvatar> {
       },
       undefined,
       (error) => {
-        console.error('Failed to load character from /assets/character.glb', error);
+        console.error('Failed to load character from /assets/male_humanoid.glb', error);
         reject(error);
       }
     );

@@ -59,6 +59,17 @@ const TURN_RATE = 6.32;
  */
 const MAX_FRAME_DELTA_SECONDS = 0.1;
 
+/**
+ * Aliases for clip names that mean the same animation but differ by more than
+ * case across authored assets (e.g. a Blender/Mixamo export named "Run" where
+ * the game logic asks for "RUNNING"). Keyed and valued in upper-case to match
+ * buildAnimationMap's normalization. Extend this when swapping in new assets
+ * rather than renaming clips in switchAnim() call sites.
+ */
+const ANIMATION_NAME_ALIASES: Record<string, string> = {
+  RUN: 'RUNNING',
+};
+
 export interface AvatarConfig {
   scale?: number;
   /** Walking speed in metres per second. Running uses RUN_SPEED_MPS. */
@@ -138,7 +149,7 @@ export class AvatarCharacter {
       this.useCharacterGLB = true;
       this.isLoadingCharacter = false;
     } catch (error) {
-      console.error('Failed to load character.glb, falling back to avatar:', error);
+      console.error('Failed to load character model, falling back to avatar:', error);
       this.isLoadingCharacter = false;
       if (this.avatarUrl) {
         await this.loadAvatarModel();
@@ -174,7 +185,11 @@ export class AvatarCharacter {
       const action = this.mixer!.clipAction(clip);
       // Key by upper-case name so lookups are case-insensitive: clip names vary
       // by asset (character.glb ships "Walking", female_boss_character.glb "WALKING").
-      this.animations.set(clip.name.toUpperCase(), action);
+      // Then resolve known aliases (e.g. "RUN" -> "RUNNING") so differently-named
+      // clips for the same animation still match switchAnim()'s canonical names.
+      const upperName = clip.name.toUpperCase();
+      const canonicalName = ANIMATION_NAME_ALIASES[upperName] ?? upperName;
+      this.animations.set(canonicalName, action);
     });
 
     console.log('Animation map built:', Array.from(this.animations.keys()));
