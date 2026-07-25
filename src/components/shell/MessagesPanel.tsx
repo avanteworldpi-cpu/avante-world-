@@ -1,112 +1,218 @@
-import { X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, SquarePen, ArrowLeft } from 'lucide-react';
 import { VerificationRing } from '../ui/VerificationRing';
-
-interface Conversation {
-  id: string;
-  name: string;
-  preview: string;
-  time: string;
-  unread: boolean;
-  /**
-   * 0-1, or undefined for parties where verification doesn't apply.
-   *
-   * PLACEHOLDER VALUES. No trust score exists to derive these from -- see
-   * VerificationRing. 1 renders a closed ring (verified); anything less renders a
-   * partial arc (still building trust).
-   */
-  verification?: number;
-  avatarBg: string;
-}
-
-/**
- * Placeholder data. There is no messaging backend: real-time DMs are a separate, later
- * piece of work. This panel exists to establish the shell's layout only.
- */
-const PLACEHOLDER_CONVERSATIONS: Conversation[] = [
-  {
-    id: '1',
-    name: 'Lerato K.',
-    preview: 'That rooftop spot in Braamfontein — still on for Saturday?',
-    time: '2m',
-    unread: true,
-    avatarBg: 'bg-dusk-700',
-  },
-  {
-    id: '2',
-    name: 'Sipho B.',
-    preview: 'Just listed the sneakers. Let me know what you think.',
-    time: '1h',
-    unread: true,
-    // Partial arc: a seller still building trust. Illustrative only.
-    verification: 0.6,
-    avatarBg: 'bg-dusk-700',
-  },
-  {
-    id: '3',
-    name: '4th Ave Coffee',
-    preview: "You're near us! Show this message for 10% off today.",
-    time: '3h',
-    unread: false,
-    // Closed ring: a verified business.
-    verification: 1,
-    avatarBg: 'bg-dusk-700',
-  },
-];
+import { ConversationView } from './ConversationView';
+import {
+  listConversations,
+  getOrCreateConversation,
+  searchProfilesByEmail,
+  type ConversationSummary,
+  type Profile,
+} from '../../lib/messaging';
 
 interface MessagesPanelProps {
   onClose: () => void;
 }
 
+/** Compact relative time for a thread-list row, e.g. "2m", "3h", "5d". */
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+type PanelView =
+  | { mode: 'list' }
+  | { mode: 'new' }
+  | { mode: 'conversation'; conversationId: string; otherUser: Profile };
+
 export function MessagesPanel({ onClose }: MessagesPanelProps) {
+  const [view, setView] = useState<PanelView>({ mode: 'list' });
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Profile[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  async function refreshConversations() {
+    setLoading(true);
+    setConversations(await listConversations());
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    if (view.mode === 'list') {
+      refreshConversations();
+    }
+  }, [view.mode]);
+
+  useEffect(() => {
+    if (view.mode !== 'new') return;
+    const query = searchQuery;
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    const timeout = setTimeout(async () => {
+      setSearchResults(await searchProfilesByEmail(query));
+      setSearching(false);
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery, view.mode]);
+
+  async function openConversationWith(profile: Profile) {
+    const conversationId = await getOrCreateConversation(profile.id);
+    if (conversationId) {
+      setView({ mode: 'conversation', conversationId, otherUser: profile });
+    }
+  }
+
+  async function openExistingConversation(c: ConversationSummary) {
+    setView({ mode: 'conversation', conversationId: c.id, otherUser: c.otherUser });
+  }
+
+  if (view.mode === 'conversation') {
+    return (
+      <aside className="w-80 shrink-0 bg-dusk-950 border-l border-dusk-800 flex flex-col">
+        <ConversationView
+          conversationId={view.conversationId}
+          otherUser={view.otherUser}
+          onBack={() => setView({ mode: 'list' })}
+        />
+      </aside>
+    );
+  }
+
   return (
     <aside className="w-80 shrink-0 bg-dusk-950 border-l border-dusk-800 flex flex-col">
       <div className="h-14 shrink-0 px-4 flex items-center justify-between border-b border-dusk-800">
-        <h2 className="font-display text-sm font-semibold text-dusk-50">Messages</h2>
-        <button
-          onClick={onClose}
-          title="Close messages"
-          aria-label="Close messages"
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-dusk-400 hover:text-dusk-100 hover:bg-dusk-800 transition-colors"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {PLACEHOLDER_CONVERSATIONS.map((c) => (
-          <button
-            key={c.id}
-            className="w-full text-left px-4 py-3 flex gap-3 border-b border-dusk-900 hover:bg-dusk-900 transition-colors"
-          >
-            <div
-              className={`w-9 h-9 shrink-0 rounded-full ${c.avatarBg} text-dusk-100 text-sm font-semibold flex items-center justify-center`}
+        {view.mode === 'new' ? (
+          <>
+            <button
+              onClick={() => setView({ mode: 'list' })}
+              title="Back to conversations"
+              aria-label="Back to conversations"
+              className="w-8 h-8 -ml-2 rounded-lg flex items-center justify-center text-dusk-400 hover:text-dusk-100 hover:bg-dusk-800 transition-colors"
             >
-              {c.name[0]}
-            </div>
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="font-display text-sm font-semibold text-dusk-50">New message</h2>
+          </>
+        ) : (
+          <h2 className="font-display text-sm font-semibold text-dusk-50">Messages</h2>
+        )}
 
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-medium text-dusk-100 truncate">{c.name}</span>
-                {/* The one sanctioned home of the ring: trust, and nothing else. */}
-                {c.verification !== undefined && (
-                  <VerificationRing progress={c.verification} size={14} strokeWidth={2} className="shrink-0" />
-                )}
-                {/* dusk-400, not the old gray-600 (2.1:1) -- timestamps are still text. */}
-                <span className="ml-auto text-[11px] text-dusk-400 shrink-0">{c.time}</span>
-              </div>
-              <p className={`text-xs truncate mt-0.5 ${c.unread ? 'text-dusk-300' : 'text-dusk-400'}`}>
-                {c.preview}
-              </p>
-            </div>
-
-            {c.unread && <span className="w-2 h-2 mt-2 shrink-0 rounded-full bg-accent" />}
+        <div className="flex items-center gap-1">
+          {view.mode === 'list' && (
+            <button
+              onClick={() => setView({ mode: 'new' })}
+              title="New message"
+              aria-label="New message"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-dusk-400 hover:text-dusk-100 hover:bg-dusk-800 transition-colors"
+            >
+              <SquarePen className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            title="Close messages"
+            aria-label="Close messages"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-dusk-400 hover:text-dusk-100 hover:bg-dusk-800 transition-colors"
+          >
+            <X className="w-4 h-4" />
           </button>
-        ))}
+        </div>
       </div>
 
-      <p className="shrink-0 px-4 py-3 border-t border-dusk-800 text-[11px] text-dusk-400">
-        Placeholder conversations — messaging isn't wired up yet.
-      </p>
+      {view.mode === 'new' ? (
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="p-3 border-b border-dusk-800">
+            <input
+              autoFocus
+              type="email"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by email..."
+              className="w-full rounded-lg bg-dusk-800 text-dusk-100 placeholder:text-dusk-400 text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {searching && (
+              <p className="px-4 py-3 text-xs text-dusk-400">Searching...</p>
+            )}
+            {!searching && searchQuery.trim() && searchResults.length === 0 && (
+              <p className="px-4 py-3 text-xs text-dusk-400">No matching users.</p>
+            )}
+            {searchResults.map((profile) => (
+              <button
+                key={profile.id}
+                onClick={() => openConversationWith(profile)}
+                className="w-full text-left px-4 py-3 flex items-center gap-3 border-b border-dusk-900 hover:bg-dusk-900 transition-colors"
+              >
+                <div className="w-9 h-9 shrink-0 rounded-full bg-dusk-700 text-dusk-100 text-sm font-semibold flex items-center justify-center">
+                  {profile.display_name[0]?.toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-dusk-100 truncate">
+                    {profile.display_name}
+                  </div>
+                  <div className="text-xs text-dusk-400 truncate">{profile.email}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          {loading && <p className="px-4 py-3 text-xs text-dusk-400">Loading...</p>}
+
+          {!loading && conversations.length === 0 && (
+            <p className="px-4 py-3 text-xs text-dusk-400">
+              No conversations yet. Start one with the compose button above.
+            </p>
+          )}
+
+          {conversations.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => openExistingConversation(c)}
+              className="w-full text-left px-4 py-3 flex gap-3 border-b border-dusk-900 hover:bg-dusk-900 transition-colors"
+            >
+              <div className="w-9 h-9 shrink-0 rounded-full bg-dusk-700 text-dusk-100 text-sm font-semibold flex items-center justify-center">
+                {c.otherUser.display_name[0]?.toUpperCase()}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-dusk-100 truncate">
+                    {c.otherUser.display_name}
+                  </span>
+                  {/* The one sanctioned home of the ring: trust, and nothing else. */}
+                  {c.verification !== undefined && (
+                    <VerificationRing progress={c.verification} size={14} strokeWidth={2} className="shrink-0" />
+                  )}
+                  {c.lastMessage && (
+                    <span className="ml-auto text-[11px] text-dusk-400 shrink-0">
+                      {formatRelativeTime(c.lastMessage.created_at)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs truncate mt-0.5 text-dusk-400">
+                  {c.lastMessage?.body ?? 'No messages yet'}
+                </p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
     </aside>
   );
 }
