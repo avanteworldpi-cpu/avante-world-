@@ -88,6 +88,8 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
 
           if (showSpinning) {
             animate();
+          } else {
+            renderer.render(scene, camera);
           }
         },
         undefined,
