@@ -31,6 +31,49 @@ export function geoToPlane(lat: number, lng: number, origin: GeoOrigin): PlanePo
   };
 }
 
+/**
+ * Exact inverse of geoToPlane. Kept beside it and derived from the same two
+ * constants (METERS_PER_DEGREE_LAT, cos(origin.lat)) so the pair can never
+ * disagree — a round trip through both is the regression test for that.
+ */
+export function planeToGeo(x: number, z: number, origin: GeoOrigin): { lat: number; lng: number } {
+  const lngScale = Math.cos(origin.lat * (Math.PI / 180));
+  return {
+    lat: origin.lat + z / METERS_PER_DEGREE_LAT,
+    lng: origin.lng + x / (METERS_PER_DEGREE_LAT * lngScale)
+  };
+}
+
+/**
+ * Half-extent of the walkable world in plane-space metres. The ground mesh is a
+ * 100x100 PlaneGeometry centred on the spawn origin (AvatarMapView.tsx), so the
+ * true edge is +/-50. This sits 2m inside that so the character eases back before
+ * ever standing flush with the visible edge of the ground plane.
+ */
+export const WORLD_HALF_EXTENT_METERS = 48;
+
+/** Per-second rate the boundary spring eases a penetrating coordinate back toward
+ * the boundary line. Same exponential-approach shape as ACCELERATION_RATE/TURN_RATE
+ * below, so a boundary hit reads as the same movement model, not a separate hard
+ * clamp bolted on top of it. */
+const BOUNDARY_SPRING_RATE = 8;
+
+/**
+ * Softly eases a single plane-space axis back toward +/-halfExtent once it has been
+ * exceeded. A no-op (returns coord unchanged) while inside the boundary — this is
+ * the behaviour the "no early creep" test checks, since a spring that leaks force
+ * inside the boundary would be indistinguishable from a subtly wrong margin.
+ *
+ * Deliberately pure and stateless (no `this`, no side effects) so it can be
+ * unit-tested without constructing an AvatarCharacter or a THREE.Scene.
+ */
+export function applyBoundarySpring(coord: number, halfExtent: number, dt: number): number {
+  if (Math.abs(coord) <= halfExtent) return coord;
+  const target = Math.sign(coord) * halfExtent;
+  const smoothing = 1 - Math.exp(-BOUNDARY_SPRING_RATE * dt);
+  return coord + (target - coord) * smoothing;
+}
+
 /** Real-world movement speeds, metres per second. */
 export const WALK_SPEED_MPS = 1.4;
 export const RUN_SPEED_MPS = 3.8;
@@ -444,6 +487,21 @@ export class AvatarCharacter {
       if (this.useCharacterGLB && this.jumpTimeout === null && this.currentAnimName === 'JUMP') {
         this.switchAnim('IDLE');
       }
+    }
+
+    // World-boundary spring. Deliberately unconditional on isMoving/avatarModel: a
+    // future push or teleport could leave the character outside the boundary with
+    // zero velocity, and it should still ease back. Runs in plane-space metres, per
+    // axis independently (so a corner slide isn't blocked by the other axis), and
+    // writes back through planeToGeo -- this.position.lat/lng is never clamped
+    // directly, which is what corrupted the earlier lat/lng-based boundary attempt.
+    const { x: planeX, z: planeZ } = geoToPlane(this.position.lat, this.position.lng, this.origin);
+    const correctedX = applyBoundarySpring(planeX, WORLD_HALF_EXTENT_METERS, dt);
+    const correctedZ = applyBoundarySpring(planeZ, WORLD_HALF_EXTENT_METERS, dt);
+    if (correctedX !== planeX || correctedZ !== planeZ) {
+      const corrected = planeToGeo(correctedX, correctedZ, this.origin);
+      this.position.lat = corrected.lat;
+      this.position.lng = corrected.lng;
     }
   }
 
