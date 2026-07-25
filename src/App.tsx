@@ -25,7 +25,12 @@ function App() {
       setUser(session?.user ?? null);
       setIsLoading(false);
 
-      if (!session) {
+      if (session) {
+        // Covers confirmation completing in another tab: this tab picks up the
+        // session via Supabase's cross-tab auth sync, so the waiting screen in
+        // Auth.tsx (which reads this same key) shouldn't reappear next reload.
+        localStorage.removeItem('pendingConfirmationEmail');
+      } else {
         // Don't leak one account's progress into the next session.
         setAvatarSelected(false);
         setLocationSelected(false);
