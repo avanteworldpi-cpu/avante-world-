@@ -98,6 +98,16 @@ export function Auth() {
     setResendCooldown(0);
   }
 
+  // Supabase deliberately returns a fake success (session: null, no email sent)
+  // when signing up with an already-registered, already-confirmed email --
+  // anti-enumeration behavior on their end, not a bug. We can't distinguish that
+  // from a genuine new signup without undermining that protection, so this link
+  // is always visible on the waiting screen regardless of which case triggered it.
+  function goToSignIn() {
+    startOver();
+    setMode('signin');
+  }
+
   function switchMode() {
     setMode(mode === 'signin' ? 'signup' : 'signin');
     setError(null);
@@ -145,6 +155,17 @@ export function Auth() {
                 className="text-accent font-medium hover:text-accent-strong"
               >
                 Use a different email
+              </button>
+            </p>
+
+            <p className="text-sm text-dusk-400">
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={goToSignIn}
+                className="text-accent font-medium hover:text-accent-strong"
+              >
+                Sign in instead
               </button>
             </p>
           </div>
