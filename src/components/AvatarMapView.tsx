@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as THREE from 'three';
-import { AvatarCharacter, WALK_SPEED_MPS } from '../lib/avatar-system';
+import { AvatarCharacter, WALK_SPEED_MPS, GeoOrigin } from '../lib/avatar-system';
+import { fetchOsmGeometry, buildOsmMeshes, disposeOsmMeshes, OsmMeshes } from '../lib/osm-geometry';
 
 /** The minimap is a readout; re-centring it every frame is needless work. */
 const MINIMAP_PAN_INTERVAL_MS = 200;
@@ -151,6 +152,23 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     ground.receiveShadow = true;
     scene.add(ground);
 
+    // Real-world roads/plots, fetched from OSM live. Fire-and-handle, not awaited:
+    // the scene/ground/avatar below are already set up synchronously before this
+    // resolves. `cancelled` guards against adding meshes to a scene this same
+    // effect has already torn down (e.g. startLocation changing again before the
+    // fetch returns) -- the geometry equivalent of the keyboard-listener leak
+    // AvatarCharacter used to have.
+    const osmOrigin: GeoOrigin = { lat: startLocation[0], lng: startLocation[1] };
+    let osmMeshes: OsmMeshes | null = null;
+    let osmCancelled = false;
+    fetchOsmGeometry(osmOrigin).then((data) => {
+      if (osmCancelled) return;
+      const meshes = buildOsmMeshes(data, osmOrigin);
+      if (meshes.roads) scene.add(meshes.roads);
+      if (meshes.plots) scene.add(meshes.plots);
+      osmMeshes = meshes;
+    });
+
     const avatar = new AvatarCharacter(scene, startLocation, avatarUrl, {
       scale: 1,
       speed: WALK_SPEED_MPS,
@@ -285,6 +303,12 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
         // non-null, so a stale id here leaves the next mount's loop dead. React
         // StrictMode's mount/cleanup/mount cycle hits this on every dev mount.
         animationFrameRef.current = null;
+      }
+      osmCancelled = true;
+      if (osmMeshes) {
+        if (osmMeshes.roads) scene.remove(osmMeshes.roads);
+        if (osmMeshes.plots) scene.remove(osmMeshes.plots);
+        disposeOsmMeshes(osmMeshes);
       }
       avatar.dispose();
       renderer.dispose();
