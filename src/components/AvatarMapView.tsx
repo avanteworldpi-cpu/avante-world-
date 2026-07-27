@@ -294,12 +294,16 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
           const targetHeight = 1.5;
           const targetLookHeight = 0.8;
 
-          const direction = new THREE.Vector3();
-          direction.subVectors(avatarModel.position, camera.position);
-          direction.normalize();
-
-          const desiredX = avatarModel.position.x + direction.x * -targetDistance;
-          const desiredZ = avatarModel.position.z + direction.z * -targetDistance;
+          // Derived from the character's actual facing (rotation.y), not from where
+          // the camera already happens to sit relative to the avatar's position --
+          // the old position-delta approach never referenced heading at all, so
+          // turning in place (without moving) left the camera exactly where it was,
+          // often in front of the character instead of behind them. `rotation` above
+          // is this same heading, using the already-verified convention (0 = facing
+          // +z/north, increasing clockwise toward +x/east).
+          const heading = avatarModel.rotation.y;
+          const desiredX = avatarModel.position.x - Math.sin(heading) * targetDistance;
+          const desiredZ = avatarModel.position.z - Math.cos(heading) * targetDistance;
           const desiredY = avatarModel.position.y + targetHeight;
 
           const smoothing = 0.05;
