@@ -1,26 +1,30 @@
-import { Globe, Compass, Users, Store, Bot } from 'lucide-react';
+import { Globe, Users, Landmark } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { TAB_LABELS, type TabId } from './types';
 
 const TAB_ICONS: Record<TabId, LucideIcon> = {
   world: Globe,
-  explore: Compass,
   meetups: Users,
-  market: Store,
-  agent: Bot,
+  meridian: Landmark,
 };
-
-const TABS: TabId[] = ['world', 'explore', 'meetups', 'market', 'agent'];
 
 interface NavRailProps {
   activeTab: TabId;
   onSelect: (tab: TabId) => void;
+  /**
+   * Meridian is a gated B2B/institutional offering (see MeridianScreen). Hiding it
+   * with CSS would still ship it to every client -- excluding it from this array is
+   * what actually keeps it out of the DOM for non-enterprise accounts.
+   */
+  showMeridian: boolean;
 }
 
-export function NavRail({ activeTab, onSelect }: NavRailProps) {
+export function NavRail({ activeTab, onSelect, showMeridian }: NavRailProps) {
+  const tabs: TabId[] = showMeridian ? ['world', 'meetups', 'meridian'] : ['world', 'meetups'];
+
   return (
     <nav className="w-16 shrink-0 bg-dusk-950 border-r border-dusk-800 flex flex-col items-center gap-1 py-4">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const Icon = TAB_ICONS[tab];
         const isActive = tab === activeTab;
 

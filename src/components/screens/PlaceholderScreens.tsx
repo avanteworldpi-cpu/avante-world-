@@ -1,5 +1,7 @@
-import { Compass, Users, Store, Bot } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
+import { Users, Landmark, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { submitMeridianInterest, type AccountTier } from '../../lib/meridian';
 
 interface PlaceholderScreenProps {
   icon: LucideIcon;
@@ -42,22 +44,6 @@ function PlaceholderScreen({ icon: Icon, title, description, items }: Placeholde
   );
 }
 
-export function ExploreScreen() {
-  return (
-    <PlaceholderScreen
-      icon={Compass}
-      title="Explore"
-      description="Discover verified places and people near you."
-      items={[
-        { title: '4th Ave Coffee', meta: 'Parkhurst · 400 m away' },
-        { title: 'Neighbourgoods Market', meta: 'Braamfontein · 2.1 km away' },
-        { title: 'Rooftop at 44 Stanley', meta: 'Milpark · 3.8 km away' },
-        { title: 'Zoo Lake Park', meta: 'Parkview · 4.2 km away' },
-      ]}
-    />
-  );
-}
-
 export function MeetupsScreen() {
   return (
     <PlaceholderScreen
@@ -74,34 +60,115 @@ export function MeetupsScreen() {
   );
 }
 
-export function MarketScreen() {
-  return (
-    <PlaceholderScreen
-      icon={Store}
-      title="Market"
-      description="Storefronts from verified sellers. Pi payments arrive in a later phase."
-      items={[
-        { title: 'Retro Sneakers', meta: '25 Pi · Sipho B.' },
-        { title: 'Handmade Ceramics', meta: '40 Pi · Thandi M.' },
-        { title: 'Vintage Denim Jacket', meta: '60 Pi · Lerato K.' },
-        { title: 'Local Roast — 1kg', meta: '15 Pi · 4th Ave Coffee' },
-      ]}
-    />
-  );
+interface MeridianScreenProps {
+  accountTier: AccountTier;
 }
 
-export function AgentScreen() {
+/**
+ * Real, finished landing page for the Meridian offering -- not the generic
+ * PlaceholderScreen pattern above, which is reserved for "not built yet" stubs.
+ * Meridian is built; it just doesn't have a working product behind it yet.
+ */
+export function MeridianScreen({ accountTier }: MeridianScreenProps) {
+  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  // Route-level re-check. The nav rail only ever lists this tab for enterprise
+  // accounts, but a hidden nav entry is advisory, not enforcement -- activeTab could
+  // still land on 'meridian' some other way. This is the actual gate; matching RLS's
+  // own account_tier check on the INSERT policy for meridian_interest_submissions.
+  if (accountTier !== 'enterprise') {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-dusk-900">
+        <p className="text-sm text-dusk-400">Not found.</p>
+      </div>
+    );
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    const result = await submitMeridianInterest(message);
+
+    if (!result.success) {
+      // Covers the RLS check rejecting the insert too (e.g. tier changed mid-session) --
+      // surfaced as a normal error state rather than a silent failure.
+      setError(result.error ?? 'Something went wrong. Please try again.');
+      setIsSubmitting(false);
+      return;
+    }
+
+    setSubmitted(true);
+    setIsSubmitting(false);
+  }
+
   return (
-    <PlaceholderScreen
-      icon={Bot}
-      title="Agent"
-      description="Autonomous avatars that act on your behalf while you're away."
-      items={[
-        { title: 'Basic — Scripted', meta: 'Not configured' },
-        { title: 'Standard — LLM', meta: 'Not configured' },
-        { title: 'Advanced — Adaptive', meta: 'Not configured' },
-        { title: 'Activity Log', meta: 'No activity yet' },
-      ]}
-    />
+    <div className="w-full h-full overflow-y-auto bg-dusk-900 p-8">
+      <div className="max-w-2xl">
+        <div className="flex items-center gap-3 mb-1">
+          <Landmark className="w-6 h-6 text-dusk-300" />
+          <h1 className="font-display text-2xl font-semibold text-dusk-50">Meridian</h1>
+        </div>
+        <p className="text-dusk-300 mb-6">
+          Institutional-grade economic simulation for governments and enterprises. Meridian runs
+          hybrid AI agents over synthetic population datasets to model policy and market
+          interventions before they touch the real economy — a distinct, enterprise-facing offering
+          built on the same simulation core as the consumer world, but separate from it.
+        </p>
+
+        <div className="rounded-lg bg-dusk-950 border border-dusk-800 p-6">
+          {submitted ? (
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
+              <div>
+                <h2 className="text-sm font-semibold text-dusk-100">Thanks — we've got it.</h2>
+                <p className="text-sm text-dusk-400 mt-1">
+                  Someone from the Meridian team will follow up on what you shared.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="meridian-message" className="block text-sm font-medium text-dusk-100">
+                  Tell us about your use case
+                </label>
+                <textarea
+                  id="meridian-message"
+                  required
+                  minLength={1}
+                  maxLength={4000}
+                  rows={5}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder="What are you looking to model, and at what scale?"
+                  className="w-full px-4 py-2 rounded-lg bg-dusk-900 border border-dusk-700 text-dusk-100 placeholder:text-dusk-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent resize-none"
+                />
+              </div>
+
+              {error && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-danger/10 border border-danger/40">
+                  <AlertCircle className="w-5 h-5 text-danger flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-danger">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSubmitting || !message.trim()}
+                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-accent text-dusk-950 font-semibold hover:bg-accent-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                Register interest
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

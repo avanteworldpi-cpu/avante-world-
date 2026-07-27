@@ -2,13 +2,16 @@ import { useState, type ReactNode } from 'react';
 import { NavRail } from './NavRail';
 import { TopBar } from './TopBar';
 import { MessagesPanel } from './MessagesPanel';
-import { ExploreScreen, MeetupsScreen, MarketScreen, AgentScreen } from '../screens/PlaceholderScreens';
+import { MeetupsScreen, MeridianScreen } from '../screens/PlaceholderScreens';
+import type { AccountTier } from '../../lib/meridian';
 import type { TabId } from './types';
 
 interface AppShellProps {
   userEmail: string | undefined;
   locationLabel: string;
   onSignOut: () => void;
+  /** Gates the Meridian nav entry and screen. See MeridianScreen for the route-level re-check. */
+  accountTier: AccountTier;
   /**
    * The World pane. Rendered once and kept mounted for the shell's whole life --
    * see the overlay below. Receives the active flag so it can pause its render loop.
@@ -16,15 +19,16 @@ interface AppShellProps {
   renderWorld: (active: boolean) => ReactNode;
 }
 
-export function AppShell({ userEmail, locationLabel, onSignOut, renderWorld }: AppShellProps) {
+export function AppShell({ userEmail, locationLabel, onSignOut, accountTier, renderWorld }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<TabId>('world');
   const [messagesOpen, setMessagesOpen] = useState(true);
 
   const isWorld = activeTab === 'world';
+  const showMeridian = accountTier === 'enterprise';
 
   return (
     <div className="w-full h-screen flex bg-dusk-900 overflow-hidden">
-      <NavRail activeTab={activeTab} onSelect={setActiveTab} />
+      <NavRail activeTab={activeTab} onSelect={setActiveTab} showMeridian={showMeridian} />
 
       <div className="flex-1 min-w-0 flex flex-col">
         <TopBar
@@ -50,10 +54,8 @@ export function AppShell({ userEmail, locationLabel, onSignOut, renderWorld }: A
 
             {!isWorld && (
               <div className="absolute inset-0 z-50">
-                {activeTab === 'explore' && <ExploreScreen />}
                 {activeTab === 'meetups' && <MeetupsScreen />}
-                {activeTab === 'market' && <MarketScreen />}
-                {activeTab === 'agent' && <AgentScreen />}
+                {activeTab === 'meridian' && <MeridianScreen accountTier={accountTier} />}
               </div>
             )}
           </main>

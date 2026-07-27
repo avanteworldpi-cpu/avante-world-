@@ -7,9 +7,11 @@ import { MapSelector } from './components/MapSelector';
 import { AvatarMapView } from './components/AvatarMapView';
 import { AppShell } from './components/shell/AppShell';
 import { supabase } from './lib/supabase';
+import { getAccountTier, type AccountTier } from './lib/meridian';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [accountTier, setAccountTier] = useState<AccountTier>('consumer');
   const [avatarSelected, setAvatarSelected] = useState(false);
   const [locationSelected, setLocationSelected] = useState(false);
   const [startLocation, setStartLocation] = useState<[number, number] | null>(null);
@@ -19,6 +21,10 @@ function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setIsLoading(false);
+
+      if (session?.user) {
+        getAccountTier(session.user.id).then(setAccountTier);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -30,11 +36,13 @@ function App() {
         // session via Supabase's cross-tab auth sync, so the waiting screen in
         // Auth.tsx (which reads this same key) shouldn't reappear next reload.
         localStorage.removeItem('pendingConfirmationEmail');
+        getAccountTier(session.user.id).then(setAccountTier);
       } else {
         // Don't leak one account's progress into the next session.
         setAvatarSelected(false);
         setLocationSelected(false);
         setStartLocation(null);
+        setAccountTier('consumer');
       }
     });
 
@@ -80,6 +88,7 @@ function App() {
       userEmail={user.email}
       locationLabel={`${startLocation[0].toFixed(3)}, ${startLocation[1].toFixed(3)}`}
       onSignOut={() => supabase.auth.signOut()}
+      accountTier={accountTier}
       // `startLocation` is held in state, so its identity is stable across the shell's
       // re-renders (tab clicks, panel toggles). If it were rebuilt inline here it would
       // be a new array every render, retriggering AvatarMapView's effect and tearing the
