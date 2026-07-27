@@ -218,6 +218,7 @@ export class AvatarCharacter {
 
       this.avatarModel.position.set(0, 0, 0);
       this.scene.add(this.avatarModel);
+      this.applyViewModeVisibility();
 
       this.buildAnimationMap(loaded.animations);
       this.switchAnim('IDLE');
@@ -277,6 +278,7 @@ export class AvatarCharacter {
       this.avatarModel.position.set(0, 0, 0);
 
       this.scene.add(this.avatarModel);
+      this.applyViewModeVisibility();
 
       const idleClip = getAnimationClip(loaded.animations, 'idle');
       if (idleClip && this.mixer) {
@@ -299,6 +301,7 @@ export class AvatarCharacter {
     this.avatarModel = createIdleCharacter();
     this.avatarModel.scale.set(this.config.scale, this.config.scale, this.config.scale);
     this.scene.add(this.avatarModel);
+    this.applyViewModeVisibility();
     console.log('Placeholder avatar created');
   }
 
@@ -339,9 +342,29 @@ export class AvatarCharacter {
    * first-person's yaw-relative movement (see updateMovement). Third-person's
    * own code path is untouched by this class either way -- this only affects
    * which branch runs.
+   *
+   * Also hides the whole avatarModel in first-person. male_humanoid.glb is one
+   * continuous "body" mesh (head, torso, arms, legs all together, confirmed by
+   * parsing the GLB directly) -- there's no separate head mesh to hide, so the
+   * choice is between the camera clipping through the face or the limbs vanishing
+   * too. Losing the limbs already reads better than visible face-clipping did.
    */
   public setViewMode(mode: 'third-person' | 'first-person'): void {
     this.viewMode = mode;
+    this.applyViewModeVisibility();
+  }
+
+  /**
+   * Applies the current viewMode's visibility to whatever avatarModel exists right
+   * now. Split out from setViewMode so a model that finishes loading *after* a mode
+   * switch (the GLB fetch is async; nothing stops a V-press landing during that
+   * window) still ends up in the correct state, rather than defaulting to
+   * THREE.Group's visible=true regardless of which mode is actually active.
+   */
+  private applyViewModeVisibility(): void {
+    if (this.avatarModel) {
+      this.avatarModel.visible = this.viewMode !== 'first-person';
+    }
   }
 
   /**

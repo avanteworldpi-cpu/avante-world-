@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Search, MapPin, Bell, MessageSquare, LogOut } from 'lucide-react';
+import { Search, MapPin, Bell, MessageSquare } from 'lucide-react';
 
 interface TopBarProps {
   userEmail: string | undefined;
   locationLabel: string;
   messagesOpen: boolean;
   onToggleMessages: () => void;
-  onSignOut: () => void;
+  onToggleSettings: () => void;
 }
 
 export function TopBar({
@@ -14,7 +14,7 @@ export function TopBar({
   locationLabel,
   messagesOpen,
   onToggleMessages,
-  onSignOut,
+  onToggleSettings,
 }: TopBarProps) {
   const [query, setQuery] = useState('');
   const initial = (userEmail?.[0] ?? '?').toUpperCase();
@@ -74,21 +74,15 @@ export function TopBar({
         </button>
 
         {/* dusk-700, not accent. This is a solid 32px disc -- in amber it becomes the
-            loudest object in the bar and the accent stops reading as sparing. */}
-        <div
-          title={userEmail}
-          className="w-8 h-8 ml-1 rounded-full bg-dusk-700 text-dusk-100 text-sm font-semibold flex items-center justify-center select-none"
+            loudest object in the bar and the accent stops reading as sparing, so
+            it stays this same neutral tone whether Settings is open or not. */}
+        <button
+          onClick={onToggleSettings}
+          title={userEmail ? `${userEmail} — Settings` : 'Settings'}
+          aria-label="Settings"
+          className="w-8 h-8 ml-1 rounded-full bg-dusk-700 text-dusk-100 text-sm font-semibold flex items-center justify-center select-none hover:bg-dusk-600 transition-colors"
         >
           {initial}
-        </div>
-
-        <button
-          onClick={onSignOut}
-          title="Sign out"
-          aria-label="Sign out"
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-dusk-400 hover:text-dusk-100 hover:bg-dusk-800 transition-colors"
-        >
-          <LogOut className="w-4.5 h-4.5" />
         </button>
       </div>
     </header>

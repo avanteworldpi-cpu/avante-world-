@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize2, Minimize2, Eye, User } from 'lucide-react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as THREE from 'three';
@@ -23,6 +23,19 @@ const MOUSE_LOOK_SENSITIVITY = 0.0025;
 
 /** Keeps the view from flipping upside down when looking straight up/down. */
 const PITCH_LIMIT_RAD = THREE.MathUtils.degToRad(85);
+
+/**
+ * Same check AvatarCharacter.isTypingTarget() uses (that one's private to its own
+ * class, so this is a small, deliberate duplication rather than a shared import)
+ * -- without it, pressing V while typing in TopBar's search field would toggle
+ * the view instead of inserting the letter.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || !el.tagName) return false;
+  const tag = el.tagName.toUpperCase();
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable === true;
+}
 
 interface AvatarMapViewProps {
   avatarUrl: string | null;
@@ -57,17 +70,16 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   // once per [avatarUrl, startLocation] mount and can't see fresh React state --
   // same reason activeRef exists.
   const expandedRef = useRef(isMinimapExpanded);
-  const [viewMode, setViewMode] = useState<ViewMode>('third-person');
-  // Mirrors viewMode for the render loop and for the pointerlockchange handler,
-  // both of which need the up-to-the-instant value synchronously (a React state
-  // read would lag by a render, which matters here: see setViewModeRef below).
-  const viewModeRef = useRef<ViewMode>(viewMode);
+  // No React state for view mode: nothing in this component's JSX depends on it
+  // any more now that the toggle is a keyboard shortcut rather than a button whose
+  // label/icon needed to reflect the current mode -- a plain ref is enough, and
+  // skips a re-render on every V-press that wouldn't have changed any output.
+  const viewModeRef = useRef<ViewMode>('third-person');
   // Holds the real mode-switch logic, defined inside the scene-setup effect
-  // (where camera/avatar/renderer are in scope) and called from the toggle
-  // button and from the active/minimap effects below. Assigning it through a
-  // ref -- rather than calling setViewMode directly from those call sites --
-  // is what keeps viewModeRef updated in the same synchronous tick as the
-  // pointer-lock calls, instead of a render behind.
+  // (where camera/avatar/renderer are in scope) and called from the V-key
+  // handler below and from the active/minimap effects further down. Assigning it
+  // through a ref keeps viewModeRef updated in the same synchronous tick as the
+  // pointer-lock calls, rather than lagging a render behind.
   const setViewModeRef = useRef<(mode: ViewMode) => void>(() => {});
 
   useEffect(() => {
@@ -242,7 +254,6 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
 
     const exitFirstPerson = () => {
       viewModeRef.current = 'third-person';
-      setViewMode('third-person');
       avatar.setViewMode('third-person');
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
@@ -256,7 +267,6 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       yaw = avatarModel?.rotation.y ?? 0;
       pitch = 0;
       viewModeRef.current = 'first-person';
-      setViewMode('first-person');
       avatar.setViewMode('first-person');
 
       // requestPointerLock() returns a Promise in newer browsers but not older
@@ -315,9 +325,25 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       }
     };
 
+    // V toggles view mode -- replaces the old on-screen button. Guarded the same
+    // way the minimap-expanded and tab-switch effects already treat first-person:
+    // inert while typing (isTypingTarget), while this tab isn't the active one, or
+    // while the minimap is expanded (entering first-person there would just get
+    // immediately kicked back out by the isMinimapExpanded effect, a pointless
+    // flicker). e.repeat guards against OS key-repeat re-firing this on every tick
+    // of a held key, which would otherwise flip the mode back and forth rapidly.
+    const handleViewToggleKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'v' || e.repeat) return;
+      if (isTypingTarget(e.target)) return;
+      if (!activeRef.current || expandedRef.current) return;
+
+      setViewModeRef.current(viewModeRef.current === 'first-person' ? 'third-person' : 'first-person');
+    };
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
     document.addEventListener('pointerlockerror', handlePointerLockError);
+    window.addEventListener('keydown', handleViewToggleKey);
 
     setIsLoadingCharacter(true);
     const checkLoaded = setInterval(() => {
@@ -503,6 +529,7 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       document.removeEventListener('pointerlockerror', handlePointerLockError);
+      window.removeEventListener('keydown', handleViewToggleKey);
       if (document.pointerLockElement === renderer.domElement) {
         document.exitPointerLock();
       }
@@ -658,27 +685,6 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
         </div>
       </div>
 
-      {/* Bottom-left: clear of the COORDINATES panel (top-left) and the minimap
-          (bottom-right) in both its collapsed and expanded states. */}
-      <button
-        type="button"
-        onClick={() =>
-          setViewModeRef.current(viewMode === 'first-person' ? 'third-person' : 'first-person')
-        }
-        title={viewMode === 'first-person' ? 'Switch to third-person view' : 'Switch to first-person view'}
-        aria-label={viewMode === 'first-person' ? 'Switch to third-person view' : 'Switch to first-person view'}
-        className="absolute bottom-6 left-6 z-40 flex items-center gap-2 px-3 py-2 rounded-lg bg-dusk-950 bg-opacity-90 backdrop-blur-sm border border-dusk-800 text-dusk-100 text-sm font-medium hover:bg-dusk-800 transition-colors"
-      >
-        {viewMode === 'first-person' ? <User className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        {viewMode === 'first-person' ? 'Third-person' : 'First-person'}
-      </button>
-
-      {/* Pointer lock hides the cursor entirely and Esc is the browser's own,
-          un-preventable way out of it -- without this, a first-time player has no
-          way to know how to get their mouse back. */}
-      {viewMode === 'first-person' && (
-        <p className="absolute bottom-20 left-6 z-40 text-xs text-dusk-400">Press Esc to exit first-person</p>
-      )}
     </div>
   );
 }

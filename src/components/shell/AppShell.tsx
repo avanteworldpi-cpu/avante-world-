@@ -3,6 +3,7 @@ import { NavRail } from './NavRail';
 import { TopBar } from './TopBar';
 import { MessagesPanel } from './MessagesPanel';
 import { MeetupsScreen, MeridianScreen } from '../screens/PlaceholderScreens';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import type { AccountTier } from '../../lib/meridian';
 import type { TabId } from './types';
 
@@ -22,9 +23,14 @@ interface AppShellProps {
 export function AppShell({ userEmail, locationLabel, onSignOut, accountTier, renderWorld }: AppShellProps) {
   const [activeTab, setActiveTab] = useState<TabId>('world');
   const [messagesOpen, setMessagesOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const isWorld = activeTab === 'world';
   const showMeridian = accountTier === 'enterprise';
+  // Settings takes priority over whichever tab is active, exactly like Messages
+  // already does with its own boolean/toggle -- it's a sibling overlay, not a nav
+  // tab, so it isn't tied to activeTab at all.
+  const showTabOverlay = !isWorld || settingsOpen;
 
   return (
     <div className="w-full h-screen flex bg-dusk-900 overflow-hidden">
@@ -36,7 +42,7 @@ export function AppShell({ userEmail, locationLabel, onSignOut, accountTier, ren
           locationLabel={locationLabel}
           messagesOpen={messagesOpen}
           onToggleMessages={() => setMessagesOpen((open) => !open)}
-          onSignOut={onSignOut}
+          onToggleSettings={() => setSettingsOpen((open) => !open)}
         />
 
         <div className="flex-1 min-h-0 flex">
@@ -52,10 +58,16 @@ export function AppShell({ userEmail, locationLabel, onSignOut, accountTier, ren
           <main className="relative flex-1 min-w-0">
             {renderWorld(isWorld)}
 
-            {!isWorld && (
+            {showTabOverlay && (
               <div className="absolute inset-0 z-50">
-                {activeTab === 'meetups' && <MeetupsScreen />}
-                {activeTab === 'meridian' && <MeridianScreen accountTier={accountTier} />}
+                {settingsOpen ? (
+                  <SettingsScreen onClose={() => setSettingsOpen(false)} onSignOut={onSignOut} />
+                ) : (
+                  <>
+                    {activeTab === 'meetups' && <MeetupsScreen />}
+                    {activeTab === 'meridian' && <MeridianScreen accountTier={accountTier} />}
+                  </>
+                )}
               </div>
             )}
           </main>
