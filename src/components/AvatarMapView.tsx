@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import * as THREE from 'three';
 import { AvatarCharacter, WALK_SPEED_MPS, GeoOrigin } from '../lib/avatar-system';
 import { fetchOsmGeometry, buildOsmMeshes, disposeOsmMeshes, OsmMeshes } from '../lib/osm-geometry';
+import { fetchTerrainElevation, buildTerrainGeometry, sampleHeight, ElevationGrid } from '../lib/terrain-elevation';
 
 /** The minimap is a readout; re-centring it every frame is needless work. */
 const MINIMAP_PAN_INTERVAL_MS = 200;
@@ -30,6 +31,7 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const avatarRef = useRef<AvatarCharacter | null>(null);
+  const terrainGridRef = useRef<ElevationGrid | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const loopRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const activeRef = useRef(active);
@@ -165,15 +167,30 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     // effect has already torn down (e.g. startLocation changing again before the
     // fetch returns) -- the geometry equivalent of the keyboard-listener leak
     // AvatarCharacter used to have.
-    const osmOrigin: GeoOrigin = { lat: startLocation[0], lng: startLocation[1] };
+    const sceneOrigin: GeoOrigin = { lat: startLocation[0], lng: startLocation[1] };
     let osmMeshes: OsmMeshes | null = null;
     let osmCancelled = false;
-    fetchOsmGeometry(osmOrigin).then((data) => {
+    fetchOsmGeometry(sceneOrigin).then((data) => {
       if (osmCancelled) return;
-      const meshes = buildOsmMeshes(data, osmOrigin);
+      const meshes = buildOsmMeshes(data, sceneOrigin);
       if (meshes.roads) scene.add(meshes.roads);
       if (meshes.plots) scene.add(meshes.plots);
       osmMeshes = meshes;
+    });
+
+    // Real-world ground elevation, fetched from Open Topo Data. Independent of the
+    // OSM fetch above -- in parallel with it, not blocking on nor blocked by it,
+    // same bounded one-shot pattern. `terrainCancelled` mirrors `osmCancelled`: a
+    // response landing after this effect has already torn down (unmount, or
+    // startLocation changing again) must not mutate a mesh that's no longer part
+    // of the live scene.
+    let terrainCancelled = false;
+    fetchTerrainElevation(sceneOrigin).then((grid) => {
+      if (terrainCancelled || !grid) return;
+      terrainGridRef.current = grid;
+      const displaced = buildTerrainGeometry(grid);
+      ground.geometry.dispose();
+      ground.geometry = displaced;
     });
 
     const avatar = new AvatarCharacter(scene, startLocation, avatarUrl, {
@@ -247,6 +264,17 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
 
         const avatarModel = avatar.getModel();
         if (avatarModel) {
+          // Ground height at the character's current plane position. A no-op (y
+          // stays exactly what it already was, i.e. 0) until the terrain fetch
+          // resolves, which is the graceful-failure path: if it never resolves,
+          // the character walks the old flat plane exactly as before. The camera
+          // below already derives its height from avatarModel.position.y + a
+          // fixed offset, so it follows correctly with no changes of its own.
+          const terrainGrid = terrainGridRef.current;
+          if (terrainGrid) {
+            avatarModel.position.y = sampleHeight(terrainGrid, avatarModel.position.x, avatarModel.position.z);
+          }
+
           // rotation.y is a compass bearing already: 0 faces north (+z) and it increases
           // clockwise toward east (+x), matching geoToPlane's axes. CSS rotate() is also
           // clockwise from up, so the bearing maps straight through. The previous `+ 180`
@@ -321,6 +349,7 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
         if (osmMeshes.plots) scene.remove(osmMeshes.plots);
         disposeOsmMeshes(osmMeshes);
       }
+      terrainCancelled = true;
       avatar.dispose();
       renderer.dispose();
       if (threeContainerRef.current?.contains(renderer.domElement)) {
