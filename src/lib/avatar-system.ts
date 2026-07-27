@@ -151,6 +151,14 @@ export class AvatarCharacter {
   private wasMoving = false;
   private animationFrame = 0;
   private animationSpeed = 0.1;
+  /**
+   * 'third-person' (default): each key maps to a fixed world compass direction,
+   * exactly as before this mode existed. 'first-person': movement is relative to
+   * the current look yaw instead (see updateMovement) and rotation.y is driven
+   * externally by mouse-look (see setFirstPersonYaw) rather than by this class's
+   * own turn-toward-movement lerp.
+   */
+  private viewMode: 'third-person' | 'first-person' = 'third-person';
 
   private config: Required<AvatarConfig>;
 
@@ -326,6 +334,30 @@ export class AvatarCharacter {
     }
   }
 
+  /**
+   * Switches between third-person's fixed-per-key world directions and
+   * first-person's yaw-relative movement (see updateMovement). Third-person's
+   * own code path is untouched by this class either way -- this only affects
+   * which branch runs.
+   */
+  public setViewMode(mode: 'third-person' | 'first-person'): void {
+    this.viewMode = mode;
+  }
+
+  /**
+   * First-person mouse-look yaw, applied directly with no easing -- unlike
+   * third-person's turn-toward-movement-direction lerp, first-person facing must
+   * track the mouse instantly, not ease toward it a frame behind. Pitch is
+   * deliberately not accepted here: a humanoid doesn't tilt its whole body to
+   * look up/down, so pitch stays camera-local (AvatarMapView.tsx) and never
+   * touches this model's rotation.
+   */
+  public setFirstPersonYaw(yaw: number): void {
+    if (this.avatarModel) {
+      this.avatarModel.rotation.y = yaw;
+    }
+  }
+
   // Bound once so dispose() can actually remove them again.
   private handleKeyDown = (e: KeyboardEvent): void => {
     if (this.shouldIgnoreKeyEvent(e)) return;
@@ -421,6 +453,23 @@ export class AvatarCharacter {
       moveX = 1;
     }
 
+    // First-person: recomputed from the same raw key intent (moveX/moveZ) rather
+    // than replacing the fixed-direction block above, so third-person's exact
+    // existing code path runs untouched either way. moveZ (w/s) is "forward" and
+    // moveX (a/d) is "strafe" *relative to the current look yaw* here, instead of
+    // the fixed compass directions third-person uses. Rotating a (forward,
+    // strafe) vector by yaw under this project's heading convention (0 = facing
+    // +z/north, increasing clockwise toward +x/east, per geoToPlane/the camera
+    // fix): forward contributes sin(yaw) to x and cos(yaw) to z; strafe-right
+    // contributes cos(yaw) to x and -sin(yaw) to z.
+    if (this.viewMode === 'first-person') {
+      const yaw = this.avatarModel?.rotation.y ?? 0;
+      const forward = moveZ;
+      const strafe = moveX;
+      targetVx = (forward * Math.sin(yaw) + strafe * Math.cos(yaw)) * lngStep;
+      targetVy = (forward * Math.cos(yaw) - strafe * Math.sin(yaw)) * latStep;
+    }
+
     const smoothing = 1 - Math.exp(-ACCELERATION_RATE * dt);
     this.velocity.x += (targetVx - this.velocity.x) * smoothing;
     this.velocity.y += (targetVy - this.velocity.y) * smoothing;
@@ -439,11 +488,17 @@ export class AvatarCharacter {
           // exponential form makes the recurrence exact -- the facing at a given elapsed
           // time is the same at any frame rate. Only the rate changes; the target and the
           // linear-toward-target path (and its wrap behaviour) are untouched.
-          this.avatarModel.rotation.y = THREE.MathUtils.lerp(
-            this.avatarModel.rotation.y,
-            targetAngle,
-            1 - Math.exp(-TURN_RATE * dt)
-          );
+          //
+          // Skipped in first-person: rotation.y there is mouse-look yaw, applied
+          // directly (and already correct) via setFirstPersonYaw -- lerping toward
+          // a movement-derived angle here would fight the mouse every frame.
+          if (this.viewMode !== 'first-person') {
+            this.avatarModel.rotation.y = THREE.MathUtils.lerp(
+              this.avatarModel.rotation.y,
+              targetAngle,
+              1 - Math.exp(-TURN_RATE * dt)
+            );
+          }
 
           if (!this.wasMoving && this.currentAnimName !== 'JUMP') {
             if (this.keys['shift'] && (this.keys['w'] || this.keys['arrowup'])) {

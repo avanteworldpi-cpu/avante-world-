@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2, Eye, User } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as THREE from 'three';
@@ -9,6 +9,20 @@ import { fetchTerrainElevation, buildTerrainGeometry, sampleHeight, ElevationGri
 
 /** The minimap is a readout; re-centring it every frame is needless work. */
 const MINIMAP_PAN_INTERVAL_MS = 200;
+
+type ViewMode = 'third-person' | 'first-person';
+
+/**
+ * Eye height, not full model height (~1.78m per glb-loader.ts) -- the camera sits
+ * a little below the top of the head, roughly where eyes actually are.
+ */
+const FIRST_PERSON_HEAD_HEIGHT = 1.65;
+
+/** Radians per pixel of mouse movement. A conventional FPS-ish sensitivity. */
+const MOUSE_LOOK_SENSITIVITY = 0.0025;
+
+/** Keeps the view from flipping upside down when looking straight up/down. */
+const PITCH_LIMIT_RAD = THREE.MathUtils.degToRad(85);
 
 interface AvatarMapViewProps {
   avatarUrl: string | null;
@@ -43,6 +57,18 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   // once per [avatarUrl, startLocation] mount and can't see fresh React state --
   // same reason activeRef exists.
   const expandedRef = useRef(isMinimapExpanded);
+  const [viewMode, setViewMode] = useState<ViewMode>('third-person');
+  // Mirrors viewMode for the render loop and for the pointerlockchange handler,
+  // both of which need the up-to-the-instant value synchronously (a React state
+  // read would lag by a render, which matters here: see setViewModeRef below).
+  const viewModeRef = useRef<ViewMode>(viewMode);
+  // Holds the real mode-switch logic, defined inside the scene-setup effect
+  // (where camera/avatar/renderer are in scope) and called from the toggle
+  // button and from the active/minimap effects below. Assigning it through a
+  // ref -- rather than calling setViewMode directly from those call sites --
+  // is what keeps viewModeRef updated in the same synchronous tick as the
+  // pointer-lock calls, instead of a render behind.
+  const setViewModeRef = useRef<(mode: ViewMode) => void>(() => {});
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -125,6 +151,13 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
     camera.position.set(0, 1.5, 6);
     camera.lookAt(0, 0.8, 0);
+    // YXZ (yaw outer, pitch inner) is the standard order for FPS-style mouse
+    // look: applying pitch as a *local* tilt after yaw is what keeps looking up
+    // and down from coupling into unwanted roll once yaw is non-zero. Harmless
+    // for third-person, which drives the camera via lookAt() every frame instead
+    // (lookAt sets the quaternion directly; three.js keeps quaternion and this
+    // Euler in sync either way, so setting the order here doesn't affect it).
+    camera.rotation.order = 'YXZ';
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -199,6 +232,92 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       animationSpeed: 0.1,
     });
     avatarRef.current = avatar;
+
+    // First-person mouse-look state. Plain closure variables, not refs: they're
+    // only ever read/written from code defined in this same effect (handleMouseMove,
+    // enterFirstPerson, and the animate() loop below), the same pattern lastTime/
+    // lastMinimapPan already use.
+    let yaw = 0;
+    let pitch = 0;
+
+    const exitFirstPerson = () => {
+      viewModeRef.current = 'third-person';
+      setViewMode('third-person');
+      avatar.setViewMode('third-person');
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock();
+      }
+    };
+
+    const enterFirstPerson = () => {
+      const avatarModel = avatar.getModel();
+      // Continue facing whatever direction third-person last faced, rather than
+      // snapping to 0 -- the switch shouldn't itself spin the character around.
+      yaw = avatarModel?.rotation.y ?? 0;
+      pitch = 0;
+      viewModeRef.current = 'first-person';
+      setViewMode('first-person');
+      avatar.setViewMode('first-person');
+
+      // requestPointerLock() returns a Promise in newer browsers but not older
+      // ones -- guard the .catch rather than assume every browser gives us one.
+      const maybeLockPromise = renderer.domElement.requestPointerLock() as unknown;
+      if (maybeLockPromise && typeof (maybeLockPromise as Promise<void>).then === 'function') {
+        (maybeLockPromise as Promise<void>).catch((err) => {
+          console.warn('Pointer lock request failed, staying in third-person:', err);
+          exitFirstPerson();
+        });
+      }
+    };
+
+    setViewModeRef.current = (mode) => {
+      if (mode === 'first-person') {
+        enterFirstPerson();
+      } else {
+        exitFirstPerson();
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (viewModeRef.current !== 'first-person') return;
+      if (document.pointerLockElement !== renderer.domElement) return;
+
+      // Verified live, not derived on paper (this project has hit sign/axis bugs
+      // from trusting a plausible formula before): moving the mouse right must
+      // turn the view right (clockwise, i.e. toward increasing heading in this
+      // project's north=0/east=+90 convention), which means yaw *increases* with
+      // positive movementX -- the opposite of the naive "subtract" most examples
+      // use, since heading here isn't three.js's own default yaw convention.
+      yaw += e.movementX * MOUSE_LOOK_SENSITIVITY;
+      pitch -= e.movementY * MOUSE_LOOK_SENSITIVITY;
+      pitch = THREE.MathUtils.clamp(pitch, -PITCH_LIMIT_RAD, PITCH_LIMIT_RAD);
+
+      // rotation.y is this project's one source of truth for heading (the
+      // minimap arrow, the third-person camera fix, and now this all read it) --
+      // yaw goes straight there. Pitch is deliberately not: a humanoid doesn't
+      // tilt its whole body to look up/down, so it only ever touches the camera's
+      // own local rotation below, never avatarModel.rotation.
+      avatar.setFirstPersonYaw(yaw);
+    };
+
+    // Esc (which the browser always honours and we can't prevent) or any other
+    // unexpected pointer-lock loss must not leave mouse-look silently dead while
+    // the UI still claims first-person -- fail back to third-person instead.
+    const handlePointerLockChange = () => {
+      if (document.pointerLockElement !== renderer.domElement && viewModeRef.current === 'first-person') {
+        exitFirstPerson();
+      }
+    };
+    const handlePointerLockError = () => {
+      console.warn('Pointer lock error, staying in third-person.');
+      if (viewModeRef.current === 'first-person') {
+        exitFirstPerson();
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
+    document.addEventListener('pointerlockerror', handlePointerLockError);
 
     setIsLoadingCharacter(true);
     const checkLoaded = setInterval(() => {
@@ -290,28 +409,55 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
             (arrowSvg as SVGElement).style.transform = `rotate(${headingDeg}deg)`;
           }
 
-          const targetDistance = 6;
-          const targetHeight = 1.5;
-          const targetLookHeight = 0.8;
+          if (viewModeRef.current === 'first-person') {
+            // Rigidly attached to the head, not lerped like third-person's follow
+            // below -- any lag between body and camera in first-person reads as
+            // broken, not cinematic. x/z track the avatar's plane position exactly;
+            // y sits at head height above whatever the terrain sampling above just
+            // set as the feet/ground height.
+            camera.position.set(
+              avatarModel.position.x,
+              avatarModel.position.y + FIRST_PERSON_HEAD_HEIGHT,
+              avatarModel.position.z
+            );
+            // Yaw (rotation.y) and pitch (camera-local tilt) are both already
+            // being kept up to date by handleMouseMove as the mouse moves; this
+            // is only re-asserting them onto the camera itself, since something
+            // else in the scene could in principle touch camera.rotation between
+            // mouse events.
+            //
+            // +PI, not the bare heading: verified live, not assumed. This
+            // project's heading convention has 0 mean "facing +Z", but a
+            // THREE.PerspectiveCamera's own default forward is -Z -- so setting
+            // rotation.y to the heading value directly pointed the camera at the
+            // character's own back. Confirmed via the camera's actual world-space
+            // forward vector at heading 0 (came out (0,0,-1), not (0,0,1)) before
+            // adding this offset, and (0,0,1) after.
+            camera.rotation.set(pitch, avatarModel.rotation.y + Math.PI, 0);
+          } else {
+            const targetDistance = 6;
+            const targetHeight = 1.5;
+            const targetLookHeight = 0.8;
 
-          // Derived from the character's actual facing (rotation.y), not from where
-          // the camera already happens to sit relative to the avatar's position --
-          // the old position-delta approach never referenced heading at all, so
-          // turning in place (without moving) left the camera exactly where it was,
-          // often in front of the character instead of behind them. `rotation` above
-          // is this same heading, using the already-verified convention (0 = facing
-          // +z/north, increasing clockwise toward +x/east).
-          const heading = avatarModel.rotation.y;
-          const desiredX = avatarModel.position.x - Math.sin(heading) * targetDistance;
-          const desiredZ = avatarModel.position.z - Math.cos(heading) * targetDistance;
-          const desiredY = avatarModel.position.y + targetHeight;
+            // Derived from the character's actual facing (rotation.y), not from where
+            // the camera already happens to sit relative to the avatar's position --
+            // the old position-delta approach never referenced heading at all, so
+            // turning in place (without moving) left the camera exactly where it was,
+            // often in front of the character instead of behind them. `rotation` above
+            // is this same heading, using the already-verified convention (0 = facing
+            // +z/north, increasing clockwise toward +x/east).
+            const heading = avatarModel.rotation.y;
+            const desiredX = avatarModel.position.x - Math.sin(heading) * targetDistance;
+            const desiredZ = avatarModel.position.z - Math.cos(heading) * targetDistance;
+            const desiredY = avatarModel.position.y + targetHeight;
 
-          const smoothing = 0.05;
-          camera.position.x += (desiredX - camera.position.x) * smoothing;
-          camera.position.y += (desiredY - camera.position.y) * smoothing;
-          camera.position.z += (desiredZ - camera.position.z) * smoothing;
+            const smoothing = 0.05;
+            camera.position.x += (desiredX - camera.position.x) * smoothing;
+            camera.position.y += (desiredY - camera.position.y) * smoothing;
+            camera.position.z += (desiredZ - camera.position.z) * smoothing;
 
-          camera.lookAt(avatarModel.position.x, avatarModel.position.y + targetLookHeight, avatarModel.position.z);
+            camera.lookAt(avatarModel.position.x, avatarModel.position.y + targetLookHeight, avatarModel.position.z);
+          }
         }
       }
 
@@ -354,6 +500,12 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
         disposeOsmMeshes(osmMeshes);
       }
       terrainCancelled = true;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      document.removeEventListener('pointerlockerror', handlePointerLockError);
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock();
+      }
       avatar.dispose();
       renderer.dispose();
       if (threeContainerRef.current?.contains(renderer.domElement)) {
@@ -373,6 +525,15 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   // tab while the minimap is still expanded would incorrectly resume movement.
   useEffect(() => {
     activeRef.current = active;
+
+    // Switching away from World while pointer-locked would otherwise leave the
+    // lock engaged (and mouse-look silently updating a hidden camera) underneath
+    // whatever tab is now showing -- first-person only makes sense while this
+    // pane is the one actually on screen.
+    if (!active && viewModeRef.current === 'first-person') {
+      setViewModeRef.current('third-person');
+    }
+
     avatarRef.current?.setEnabled(active && !expandedRef.current);
 
     if (active) {
@@ -388,6 +549,14 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   // (via expandedRef) for the duration.
   useEffect(() => {
     expandedRef.current = isMinimapExpanded;
+
+    // Pointer lock captures the mouse globally -- the cursor doesn't visibly move
+    // at all, which is incompatible with actually dragging/clicking the now-larger
+    // interactive minimap. Expanding it has to kick first-person out first, not
+    // just pause movement like it already does.
+    if (isMinimapExpanded && viewModeRef.current === 'first-person') {
+      setViewModeRef.current('third-person');
+    }
 
     const map = mapRef.current;
     if (!map) return;
@@ -488,6 +657,28 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
           </p>
         </div>
       </div>
+
+      {/* Bottom-left: clear of the COORDINATES panel (top-left) and the minimap
+          (bottom-right) in both its collapsed and expanded states. */}
+      <button
+        type="button"
+        onClick={() =>
+          setViewModeRef.current(viewMode === 'first-person' ? 'third-person' : 'first-person')
+        }
+        title={viewMode === 'first-person' ? 'Switch to third-person view' : 'Switch to first-person view'}
+        aria-label={viewMode === 'first-person' ? 'Switch to third-person view' : 'Switch to first-person view'}
+        className="absolute bottom-6 left-6 z-40 flex items-center gap-2 px-3 py-2 rounded-lg bg-dusk-950 bg-opacity-90 backdrop-blur-sm border border-dusk-800 text-dusk-100 text-sm font-medium hover:bg-dusk-800 transition-colors"
+      >
+        {viewMode === 'first-person' ? <User className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        {viewMode === 'first-person' ? 'Third-person' : 'First-person'}
+      </button>
+
+      {/* Pointer lock hides the cursor entirely and Esc is the browser's own,
+          un-preventable way out of it -- without this, a first-time player has no
+          way to know how to get their mouse back. */}
+      {viewMode === 'first-person' && (
+        <p className="absolute bottom-20 left-6 z-40 text-xs text-dusk-400">Press Esc to exit first-person</p>
+      )}
     </div>
   );
 }
