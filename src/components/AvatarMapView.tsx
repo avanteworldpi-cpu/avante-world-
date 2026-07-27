@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as THREE from 'three';
@@ -33,7 +34,13 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   const loopRef = useRef<{ start: () => void; stop: () => void } | null>(null);
   const activeRef = useRef(active);
   const coordsRef = useRef<HTMLParagraphElement>(null);
+  const zoomControlRef = useRef<L.Control.Zoom | null>(null);
   const [isLoadingCharacter, setIsLoadingCharacter] = useState(true);
+  const [isMinimapExpanded, setIsMinimapExpanded] = useState(false);
+  // Mirrors isMinimapExpanded for the render-loop closure below, which is created
+  // once per [avatarUrl, startLocation] mount and can't see fresh React state --
+  // same reason activeRef exists.
+  const expandedRef = useRef(isMinimapExpanded);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -221,8 +228,12 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
 
         // Keep the character centred in the minimap, or they'd simply walk off the
         // edge of it. Throttled: setView every frame is needless work for a readout.
+        // Suppressed while expanded so auto-follow doesn't fight the user's manual
+        // pan/zoom (movement is paused then anyway, so there's nothing to follow).
         if (currentTime - lastMinimapPan > MINIMAP_PAN_INTERVAL_MS) {
-          mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: false });
+          if (!expandedRef.current) {
+            mapRef.current.setView([lat, lng], mapRef.current.getZoom(), { animate: false });
+          }
           lastMinimapPan = currentTime;
 
           // Written straight to the DOM rather than through state: this runs inside
@@ -322,9 +333,14 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
 
   // Pause/resume without unmounting: the scene survives, so the character keeps its
   // position and the character model is not refetched when the user comes back to World.
+  //
+  // Movement has two independent reasons to be paused -- this tab isn't active, or
+  // the minimap is expanded -- so enablement is always the AND of both rather than
+  // either effect setting it unconditionally. Without this, returning to the World
+  // tab while the minimap is still expanded would incorrectly resume movement.
   useEffect(() => {
     activeRef.current = active;
-    avatarRef.current?.setEnabled(active);
+    avatarRef.current?.setEnabled(active && !expandedRef.current);
 
     if (active) {
       loopRef.current?.start();
@@ -333,6 +349,57 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     }
   }, [active]);
 
+  // Expanding the minimap turns it from a passive readout into a full pan/zoom
+  // surface, which would otherwise fight the character's WASD control and the
+  // auto-follow setView above -- so movement pauses and auto-follow is suppressed
+  // (via expandedRef) for the duration.
+  useEffect(() => {
+    expandedRef.current = isMinimapExpanded;
+
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (isMinimapExpanded) {
+      map.dragging.enable();
+      map.scrollWheelZoom.enable();
+      map.doubleClickZoom.enable();
+      map.boxZoom.enable();
+      map.keyboard.enable();
+      if (!zoomControlRef.current) {
+        zoomControlRef.current = L.control.zoom().addTo(map);
+      }
+      avatarRef.current?.setEnabled(false);
+    } else {
+      map.dragging.disable();
+      map.scrollWheelZoom.disable();
+      map.doubleClickZoom.disable();
+      map.boxZoom.disable();
+      map.keyboard.disable();
+      if (zoomControlRef.current) {
+        zoomControlRef.current.remove();
+        zoomControlRef.current = null;
+      }
+
+      // Collapsing is meant to read as "back to a tidy position readout", not
+      // "wherever the user last panned/zoomed to" -- so it re-centres and resets
+      // zoom rather than leaving the view as the user left it.
+      const [lat, lng] = avatarRef.current?.getPosition() ?? startLocation;
+      map.setView([lat, lng], 16, { animate: false });
+
+      avatarRef.current?.setEnabled(activeRef.current);
+    }
+
+    // The container's size class has just changed on this same render, but the
+    // browser hasn't necessarily reflowed to the new box yet in this tick --
+    // Leaflet caches its container size internally and invalidateSize() needs to
+    // run after the resize has actually happened, not synchronously with it.
+    const raf = requestAnimationFrame(() => {
+      map.invalidateSize();
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [isMinimapExpanded, startLocation]);
+
   // `relative` matters: the overlays below are absolutely positioned, and without a
   // positioned ancestor they anchor to the viewport and float over the shell's nav
   // rail and top bar instead of staying inside this pane.
@@ -340,11 +407,36 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     <div className="relative w-full h-full overflow-hidden bg-dusk-900">
       <div className="absolute inset-0" ref={threeContainerRef} />
 
-      {/* Minimap: real-world position readout, pinned to the corner of the viewport. */}
+      {/*
+        Minimap: real-world position readout, pinned to the corner of the viewport.
+        Expanding grows this same panel in place (still anchored bottom-right) rather
+        than opening a modal -- the Leaflet container and the button are separate
+        elements so React never has to manage children inside the div Leaflet owns.
+      */}
       <div
-        className="absolute bottom-6 right-6 z-40 w-56 h-40 rounded-lg overflow-hidden border border-dusk-700 shadow-2xl"
-        ref={mapContainerRef}
-      />
+        className={`absolute bottom-6 right-6 z-40 aspect-[7/5] rounded-lg overflow-hidden border border-dusk-700 shadow-2xl transition-[width] duration-200 ${
+          isMinimapExpanded
+            ? // Capped at the viewport minus margin, not a bare 28rem: anchored bottom-right
+              // with no left-side offset, a fixed 448px would push off-screen on a narrow
+              // (e.g. mobile-width) viewport instead of shrinking to fit. Height follows from
+              // width via aspect-[7/5] -- same 1.4:1 ratio as the collapsed w-56 h-40 -- and
+              // max-h guards the same overflow on short/landscape viewports.
+              'w-[min(28rem,calc(100vw-3rem))] max-h-[min(20rem,calc(100vh-3rem))]'
+            : 'w-56'
+        }`}
+      >
+        <div className="absolute inset-0" ref={mapContainerRef} />
+
+        <button
+          type="button"
+          onClick={() => setIsMinimapExpanded((expanded) => !expanded)}
+          title={isMinimapExpanded ? 'Collapse minimap' : 'Expand minimap'}
+          aria-label={isMinimapExpanded ? 'Collapse minimap' : 'Expand minimap'}
+          className="absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-md bg-dusk-950/80 backdrop-blur-sm border border-dusk-700 flex items-center justify-center text-dusk-100 hover:bg-dusk-800 transition-colors"
+        >
+          {isMinimapExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </button>
+      </div>
 
       {isLoadingCharacter && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-dusk-950 bg-opacity-95 backdrop-blur-sm rounded-xl px-8 py-6 border border-dusk-800 shadow-2xl">
