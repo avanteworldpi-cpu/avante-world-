@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { AvatarCharacter, WALK_SPEED_MPS, GeoOrigin } from '../lib/avatar-system';
 import { fetchOsmGeometry, buildOsmMeshes, disposeOsmMeshes, OsmMeshes } from '../lib/osm-geometry';
 import { fetchTerrainElevation, buildTerrainGeometry, sampleHeight, ElevationGrid } from '../lib/terrain-elevation';
+import { buildVegetation, applyVegetationHeights, disposeVegetation } from '../lib/vegetation';
 
 /** The minimap is a readout; re-centring it every frame is needless work. */
 const MINIMAP_PAN_INTERVAL_MS = 200;
@@ -23,6 +24,63 @@ const MOUSE_LOOK_SENSITIVITY = 0.0025;
 
 /** Keeps the view from flipping upside down when looking straight up/down. */
 const PITCH_LIMIT_RAD = THREE.MathUtils.degToRad(85);
+
+/**
+ * Comfortably outside the -50/+50m terrain footprint and the camera's own 1000m
+ * far-clip plane, so the dome is never clipped and the camera (which never
+ * leaves the walkable area) is always well inside it.
+ */
+const SKY_RADIUS_METERS = 400;
+
+/**
+ * Per-fragment (not per-vertex) gradient, so even a coarse sphere reads as
+ * perfectly smooth -- no faceting to hide the way the low-poly tree geometry
+ * below deliberately doesn't hide its own.
+ */
+const SKY_VERTEX_SHADER = `
+  varying vec3 vWorldPosition;
+  void main() {
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPosition.xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const SKY_FRAGMENT_SHADER = `
+  uniform vec3 topColor;
+  uniform vec3 horizonColor;
+  uniform float offset;
+  uniform float exponent;
+  varying vec3 vWorldPosition;
+  void main() {
+    float h = normalize(vWorldPosition + vec3(0.0, offset, 0.0)).y;
+    gl_FragColor = vec4(mix(horizonColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+  }
+`;
+
+/**
+ * A large inverted (BackSide) sphere lit by a static two-colour gradient shader,
+ * standing in for scene.background -- deep indigo-dusk overhead (this app's own
+ * dusk-950 surface token) fading to warm amber (the accent hex) at the horizon.
+ * Static on purpose: no day/night cycle, no animation, matching this app's other
+ * "cheap and simple" decorative additions.
+ */
+function createSkyDome(): THREE.Mesh {
+  const geometry = new THREE.SphereGeometry(SKY_RADIUS_METERS, 24, 16);
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      topColor: { value: new THREE.Color(0x0a0d19) },
+      horizonColor: { value: new THREE.Color(0xef9f27) },
+      offset: { value: 20 },
+      exponent: { value: 0.6 },
+    },
+    vertexShader: SKY_VERTEX_SHADER,
+    fragmentShader: SKY_FRAGMENT_SHADER,
+    side: THREE.BackSide,
+    depthWrite: false,
+  });
+  return new THREE.Mesh(geometry, material);
+}
 
 /**
  * Same check AvatarCharacter.isTypingTarget() uses (that one's private to its own
@@ -157,8 +215,10 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     const height = threeContainerRef.current.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a2e);
     sceneRef.current = scene;
+
+    const sky = createSkyDome();
+    scene.add(sky);
 
     const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
     camera.position.set(0, 1.5, 6);
@@ -206,6 +266,15 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     ground.receiveShadow = true;
     scene.add(ground);
 
+    // Decorative only -- no OSM greenery data, no collision. Built on flat ground
+    // (null grid) so trees appear instantly rather than waiting on the terrain
+    // fetch below; applyVegetationHeights() resettles them onto real elevation
+    // once/if that fetch resolves, the same two-step the ground geometry itself
+    // goes through.
+    const vegetation = buildVegetation(null);
+    scene.add(vegetation.trunks);
+    scene.add(vegetation.foliage);
+
     // Real-world roads/plots, fetched from OSM live. Fire-and-handle, not awaited:
     // the scene/ground/avatar below are already set up synchronously before this
     // resolves. `cancelled` guards against adding meshes to a scene this same
@@ -236,6 +305,7 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       const displaced = buildTerrainGeometry(grid);
       ground.geometry.dispose();
       ground.geometry = displaced;
+      applyVegetationHeights(vegetation, grid);
     });
 
     const avatar = new AvatarCharacter(scene, startLocation, avatarUrl, {
@@ -526,6 +596,12 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
         disposeOsmMeshes(osmMeshes);
       }
       terrainCancelled = true;
+      scene.remove(vegetation.trunks);
+      scene.remove(vegetation.foliage);
+      disposeVegetation(vegetation);
+      scene.remove(sky);
+      sky.geometry.dispose();
+      (sky.material as THREE.ShaderMaterial).dispose();
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       document.removeEventListener('pointerlockerror', handlePointerLockError);
