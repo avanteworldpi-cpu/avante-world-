@@ -21,6 +21,12 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Guards the GLTFLoader callbacks below: React StrictMode's dev-only
+    // mount/cleanup/mount cycle can tear this effect down before the (async)
+    // load resolves, and without this flag the stale callback would go on to
+    // render/upload textures into the renderer this same cleanup just disposed.
+    let cancelled = false;
+
     try {
       setIsLoading(true);
       setError(null);
@@ -69,6 +75,8 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
       loader.load(
         modelUrl,
         (gltf) => {
+          if (cancelled) return;
+
           const model = gltf.scene;
           model.position.set(0, 0, 0);
 
@@ -94,6 +102,8 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
         },
         undefined,
         (error) => {
+          if (cancelled) return;
+
           console.error('Error loading model:', error);
           setError('Failed to load avatar preview');
           setIsLoading(false);
@@ -130,6 +140,7 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
       window.addEventListener('resize', handleResize);
 
       return () => {
+        cancelled = true;
         window.removeEventListener('resize', handleResize);
 
         if (animationIdRef.current) {
