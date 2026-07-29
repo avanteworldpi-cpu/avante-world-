@@ -94,9 +94,16 @@ export function AvatarPreviewViewer({ modelUrl, showSpinning = true }: AvatarPre
           modelRef.current = model;
           setIsLoading(false);
 
-          if (showSpinning) {
-            animate();
-          } else {
+          // Not animate(): the loop started below (before this load resolved)
+          // is already running and picks up modelRef.current on its very next
+          // tick. Calling animate() again here would start a second, parallel
+          // requestAnimationFrame chain competing with the first for
+          // animationIdRef.current -- cleanup's single cancelAnimationFrame
+          // could only ever cancel whichever chain wrote to the ref last,
+          // leaving the other to fire at least once more after this effect's
+          // renderer.dispose(), which is what produced the GL_INVALID_OPERATION
+          // "Texture is immutable" warnings on unmount.
+          if (!showSpinning) {
             renderer.render(scene, camera);
           }
         },
