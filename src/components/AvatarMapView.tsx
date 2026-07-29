@@ -139,6 +139,11 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
   // through a ref keeps viewModeRef updated in the same synchronous tick as the
   // pointer-lock calls, rather than lagging a render behind.
   const setViewModeRef = useRef<(mode: ViewMode) => void>(() => {});
+  // Bridges the pause-effects below (minimap expand, tab switch) into the
+  // scene-setup effect's closure, same reason setViewModeRef exists: pointer
+  // lock (now the default for both view modes) and the orbit yaw/pitch pair
+  // are closure-local to that effect, not reachable from these separate ones.
+  const pauseInteractionRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -322,12 +327,54 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     let yaw = 0;
     let pitch = 0;
 
-    const exitFirstPerson = () => {
+    // Third-person's own orbit yaw/pitch -- where the camera is currently
+    // looking from, entirely decoupled from avatarModel.rotation.y (the
+    // character's facing). Same plain-closure-variable treatment as yaw/pitch
+    // above, for the same reason. Never fed into setFirstPersonYaw -- only into
+    // the camera's own position/lookAt math below and, once per frame, into
+    // AvatarCharacter via setOrbitYaw so its own movement/turn-toward-movement
+    // math can read it.
+    let orbitYaw = 0;
+    let orbitPitch = 0;
+
+    // requestPointerLock() returns a Promise in newer browsers but not older
+    // ones -- guard the .catch rather than assume every browser gives us one.
+    // Shared by both enterFirstPerson and enterThirdPerson below, since pointer
+    // lock is now the default for being in the World at all, not specific to
+    // first-person. Guarded against redundant calls when already locked --
+    // switching between the two modes no longer crosses a locked/unlocked
+    // boundary the way it used to, so this can now legitimately fire while
+    // already locked (e.g. V-press from one mode straight into the other).
+    const requestPointerLockIfNeeded = (onFailure?: (err: unknown) => void) => {
+      if (document.pointerLockElement === renderer.domElement) return;
+      const maybeLockPromise = renderer.domElement.requestPointerLock() as unknown;
+      if (maybeLockPromise && typeof (maybeLockPromise as Promise<void>).then === 'function') {
+        (maybeLockPromise as Promise<void>).catch((err) => {
+          onFailure?.(err);
+        });
+      }
+    };
+
+    const enterThirdPerson = () => {
       viewModeRef.current = 'third-person';
       avatar.setViewMode('third-person');
-      if (document.pointerLockElement === renderer.domElement) {
-        document.exitPointerLock();
-      }
+      // Mirrors enterFirstPerson's own yaw = avatarModel?.rotation.y ?? 0 below:
+      // the orbit continues from whichever way the character was actually
+      // facing (driven by first-person mouse-look) rather than snapping to
+      // wherever orbitYaw last happened to be, which could be stale from the
+      // last time third-person was active.
+      const avatarModel = avatar.getModel();
+      orbitYaw = avatarModel?.rotation.y ?? 0;
+      orbitPitch = 0;
+
+      // GTA-style third-person holds pointer lock by default too now, same as
+      // first-person -- this direct V-key transition is expected to keep it.
+      // The forced-pause paths (tab switch, minimap expand) call this same
+      // function but then explicitly release the lock again afterward; see
+      // pauseInteractionRef below.
+      requestPointerLockIfNeeded((err) => {
+        console.warn('Pointer lock request failed:', err);
+      });
     };
 
     const enterFirstPerson = () => {
@@ -339,59 +386,92 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       viewModeRef.current = 'first-person';
       avatar.setViewMode('first-person');
 
-      // requestPointerLock() returns a Promise in newer browsers but not older
-      // ones -- guard the .catch rather than assume every browser gives us one.
-      const maybeLockPromise = renderer.domElement.requestPointerLock() as unknown;
-      if (maybeLockPromise && typeof (maybeLockPromise as Promise<void>).then === 'function') {
-        (maybeLockPromise as Promise<void>).catch((err) => {
-          console.warn('Pointer lock request failed, staying in third-person:', err);
-          exitFirstPerson();
-        });
-      }
+      requestPointerLockIfNeeded((err) => {
+        console.warn('Pointer lock request failed, staying in third-person:', err);
+        enterThirdPerson();
+      });
     };
 
     setViewModeRef.current = (mode) => {
       if (mode === 'first-person') {
         enterFirstPerson();
       } else {
-        exitFirstPerson();
+        enterThirdPerson();
+      }
+    };
+
+    // Used by the minimap-expand and tab-inactive effects (outside this
+    // closure) to hand back control of the mouse: pointer lock is now the
+    // default for both view modes, so simply falling back to third-person (as
+    // these effects already did for first-person) is no longer enough on its
+    // own -- third-person wants the lock just as much. First-person still also
+    // falls back to third-person here: it has no body to render and a camera
+    // rigidly attached to a head that isn't even the pane on screen doesn't
+    // make sense while paused. Deliberately does NOT touch orbitYaw/orbitPitch
+    // when already in third-person -- resetting them on every pause would
+    // discard the user's current orbit for no reason.
+    pauseInteractionRef.current = () => {
+      if (viewModeRef.current === 'first-person') {
+        viewModeRef.current = 'third-person';
+        avatar.setViewMode('third-person');
+        const avatarModel = avatar.getModel();
+        orbitYaw = avatarModel?.rotation.y ?? 0;
+        orbitPitch = 0;
+      }
+      if (document.pointerLockElement === renderer.domElement) {
+        document.exitPointerLock();
       }
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (viewModeRef.current !== 'first-person') return;
       if (document.pointerLockElement !== renderer.domElement) return;
 
-      // Verified live, not derived on paper (this project has hit sign/axis bugs
-      // from trusting a plausible formula before): moving the mouse right must
-      // turn the view right (clockwise, i.e. toward increasing heading in this
-      // project's north=0/east=+90 convention), which means yaw *increases* with
-      // positive movementX -- the opposite of the naive "subtract" most examples
-      // use, since heading here isn't three.js's own default yaw convention.
-      yaw += e.movementX * MOUSE_LOOK_SENSITIVITY;
-      pitch -= e.movementY * MOUSE_LOOK_SENSITIVITY;
-      pitch = THREE.MathUtils.clamp(pitch, -PITCH_LIMIT_RAD, PITCH_LIMIT_RAD);
+      if (viewModeRef.current === 'first-person') {
+        // Verified live, not derived on paper (this project has hit sign/axis bugs
+        // from trusting a plausible formula before): moving the mouse right must
+        // turn the view right (clockwise, i.e. toward increasing heading in this
+        // project's north=0/east=+90 convention), which means yaw *increases* with
+        // positive movementX -- the opposite of the naive "subtract" most examples
+        // use, since heading here isn't three.js's own default yaw convention.
+        yaw += e.movementX * MOUSE_LOOK_SENSITIVITY;
+        pitch -= e.movementY * MOUSE_LOOK_SENSITIVITY;
+        pitch = THREE.MathUtils.clamp(pitch, -PITCH_LIMIT_RAD, PITCH_LIMIT_RAD);
 
-      // rotation.y is this project's one source of truth for heading (the
-      // minimap arrow, the third-person camera fix, and now this all read it) --
-      // yaw goes straight there. Pitch is deliberately not: a humanoid doesn't
-      // tilt its whole body to look up/down, so it only ever touches the camera's
-      // own local rotation below, never avatarModel.rotation.
-      avatar.setFirstPersonYaw(yaw);
+        // rotation.y is this project's one source of truth for heading (the
+        // minimap arrow, the third-person camera fix, and now this all read it) --
+        // yaw goes straight there. Pitch is deliberately not: a humanoid doesn't
+        // tilt its whole body to look up/down, so it only ever touches the camera's
+        // own local rotation below, never avatarModel.rotation.
+        avatar.setFirstPersonYaw(yaw);
+      } else {
+        // Third-person's own orbit yaw/pitch -- same sign convention as
+        // first-person's above (reused, not re-derived), but deliberately never
+        // calls setFirstPersonYaw or touches avatarModel.rotation.y directly.
+        // Orbiting the camera must never turn the body on its own; only
+        // AvatarCharacter's own turn-toward-movement lerp does that, and only
+        // while a movement key is held (see setOrbitYaw / updateMovement).
+        orbitYaw += e.movementX * MOUSE_LOOK_SENSITIVITY;
+        orbitPitch -= e.movementY * MOUSE_LOOK_SENSITIVITY;
+        orbitPitch = THREE.MathUtils.clamp(orbitPitch, -PITCH_LIMIT_RAD, PITCH_LIMIT_RAD);
+      }
     };
 
     // Esc (which the browser always honours and we can't prevent) or any other
     // unexpected pointer-lock loss must not leave mouse-look silently dead while
     // the UI still claims first-person -- fail back to third-person instead.
+    // Third-person's own unexpected lock loss (e.g. Esc while orbiting) is left
+    // alone: there's no "safer" mode to fall back to the way first-person has,
+    // so it just stays in third-person without the lock until the canvas is
+    // clicked again or V is pressed to cycle modes.
     const handlePointerLockChange = () => {
       if (document.pointerLockElement !== renderer.domElement && viewModeRef.current === 'first-person') {
-        exitFirstPerson();
+        enterThirdPerson();
       }
     };
     const handlePointerLockError = () => {
       console.warn('Pointer lock error, staying in third-person.');
       if (viewModeRef.current === 'first-person') {
-        exitFirstPerson();
+        enterThirdPerson();
       }
     };
 
@@ -451,6 +531,10 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
 
+      // Read every frame regardless of view mode -- updateMovement only ever
+      // consults it while in third-person, so this is a harmless no-op the rest
+      // of the time, and simpler than gating the call on viewModeRef here too.
+      avatar.setOrbitYaw(orbitYaw);
       avatar.update(deltaTime);
 
       const [lat, lng] = avatar.getPosition();
@@ -535,17 +619,24 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
             const targetHeight = 1.5;
             const targetLookHeight = 0.8;
 
-            // Derived from the character's actual facing (rotation.y), not from where
-            // the camera already happens to sit relative to the avatar's position --
-            // the old position-delta approach never referenced heading at all, so
-            // turning in place (without moving) left the camera exactly where it was,
-            // often in front of the character instead of behind them. `rotation` above
-            // is this same heading, using the already-verified convention (0 = facing
-            // +z/north, increasing clockwise toward +x/east).
-            const heading = avatarModel.rotation.y;
-            const desiredX = avatarModel.position.x - Math.sin(heading) * targetDistance;
-            const desiredZ = avatarModel.position.z - Math.cos(heading) * targetDistance;
-            const desiredY = avatarModel.position.y + targetHeight;
+            // GTA-style orbit: the camera sits on a sphere of radius targetDistance
+            // around a pivot near the character's chest, with orbitYaw as the
+            // horizontal angle (mouse-driven, decoupled from rotation.y -- see the
+            // orbitYaw closure variable above) and orbitPitch tilting the camera up
+            // and down that same sphere. cos(orbitPitch) shrinks the horizontal radius
+            // as the camera rises or dips, keeping it on the sphere rather than
+            // just translating straight up/down; sin(orbitPitch) supplies that
+            // rise/dip itself. At orbitPitch 0 this reduces to exactly the old
+            // fixed-heading formula (horizontal offset only, desiredY ==
+            // avatarModel.position.y + targetHeight), so the two are continuous
+            // with each other rather than a separate system bolted on.
+            const pivotX = avatarModel.position.x;
+            const pivotY = avatarModel.position.y + targetHeight;
+            const pivotZ = avatarModel.position.z;
+
+            const desiredX = pivotX - Math.sin(orbitYaw) * Math.cos(orbitPitch) * targetDistance;
+            const desiredZ = pivotZ - Math.cos(orbitYaw) * Math.cos(orbitPitch) * targetDistance;
+            const desiredY = pivotY + Math.sin(orbitPitch) * targetDistance;
 
             const smoothing = 0.05;
             camera.position.x += (desiredX - camera.position.x) * smoothing;
@@ -630,11 +721,12 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     activeRef.current = active;
 
     // Switching away from World while pointer-locked would otherwise leave the
-    // lock engaged (and mouse-look silently updating a hidden camera) underneath
-    // whatever tab is now showing -- first-person only makes sense while this
-    // pane is the one actually on screen.
-    if (!active && viewModeRef.current === 'first-person') {
-      setViewModeRef.current('third-person');
+    // lock engaged (and mouse-look/orbit silently updating a hidden camera)
+    // underneath whatever tab is now showing -- neither view mode makes sense
+    // while this pane isn't the one actually on screen, and both now hold
+    // pointer lock by default (see pauseInteractionRef).
+    if (!active) {
+      pauseInteractionRef.current();
     }
 
     avatarRef.current?.setEnabled(active && !expandedRef.current);
@@ -655,10 +747,12 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
 
     // Pointer lock captures the mouse globally -- the cursor doesn't visibly move
     // at all, which is incompatible with actually dragging/clicking the now-larger
-    // interactive minimap. Expanding it has to kick first-person out first, not
-    // just pause movement like it already does.
-    if (isMinimapExpanded && viewModeRef.current === 'first-person') {
-      setViewModeRef.current('third-person');
+    // interactive minimap. Both view modes hold the lock by default now (see
+    // pauseInteractionRef), so expanding has to release it regardless of which
+    // mode is currently active, not just kick first-person out the way it used
+    // to be enough to do.
+    if (isMinimapExpanded) {
+      pauseInteractionRef.current();
     }
 
     const map = mapRef.current;

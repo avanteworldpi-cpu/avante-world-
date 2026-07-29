@@ -141,6 +141,16 @@ export class AvatarCharacter {
   private jumpTimeout: NodeJS.Timeout | null = null;
 
   private velocity = { x: 0, y: 0 };
+  /**
+   * Third-person's mouse-orbit yaw -- where the camera is currently looking
+   * from, fed in every frame from AvatarMapView via setOrbitYaw. Unlike
+   * first-person's yaw (rotation.y itself, set directly by setFirstPersonYaw),
+   * this never touches rotation.y on its own -- only updateMovement reads it,
+   * to rotate WASD input into world-space movement and to compute the
+   * character's own turn-toward-movement target, and only while a movement
+   * key is actually held. Orbiting the camera alone must never turn the body.
+   */
+  private orbitYaw = 0;
   private speed: number;
   private readonly metersToLatDegrees: number;
   private readonly metersToLngDegrees: number;
@@ -381,6 +391,17 @@ export class AvatarCharacter {
     }
   }
 
+  /**
+   * Third-person's mouse-orbit yaw, fed in every frame regardless of view mode
+   * (updateMovement only ever reads it while viewMode is 'third-person', so
+   * calling this unconditionally from the render loop is harmless in
+   * first-person). See the orbitYaw field comment for why this deliberately
+   * never touches rotation.y itself the way setFirstPersonYaw does.
+   */
+  public setOrbitYaw(yaw: number): void {
+    this.orbitYaw = yaw;
+  }
+
   // Bound once so dispose() can actually remove them again.
   private handleKeyDown = (e: KeyboardEvent): void => {
     if (this.shouldIgnoreKeyEvent(e)) return;
@@ -455,43 +476,43 @@ export class AvatarCharacter {
     const latStep = speedMps * this.metersToLatDegrees;
     const lngStep = speedMps * this.metersToLngDegrees;
 
+    // Raw key intent only here -- forward/strafe relative to a look yaw, not yet
+    // a world-space direction (see below). `this.direction` still feeds the
+    // non-GLB placeholder's own fixed-angle rotation further down, which this
+    // rework doesn't touch.
     if (this.keys['w'] || this.keys['arrowup']) {
-      targetVy += latStep;
       this.direction = 0;
       moveZ = 1;
     }
     if (this.keys['s'] || this.keys['arrowdown']) {
-      targetVy -= latStep;
       this.direction = 180;
       moveZ = -1;
     }
     if (this.keys['a'] || this.keys['arrowleft']) {
-      targetVx -= lngStep;
       this.direction = 90;
       moveX = -1;
     }
     if (this.keys['d'] || this.keys['arrowright']) {
-      targetVx += lngStep;
       this.direction = -90;
       moveX = 1;
     }
 
-    // First-person: recomputed from the same raw key intent (moveX/moveZ) rather
-    // than replacing the fixed-direction block above, so third-person's exact
-    // existing code path runs untouched either way. moveZ (w/s) is "forward" and
-    // moveX (a/d) is "strafe" *relative to the current look yaw* here, instead of
-    // the fixed compass directions third-person uses. Rotating a (forward,
-    // strafe) vector by yaw under this project's heading convention (0 = facing
-    // +z/north, increasing clockwise toward +x/east, per geoToPlane/the camera
-    // fix): forward contributes sin(yaw) to x and cos(yaw) to z; strafe-right
-    // contributes cos(yaw) to x and -sin(yaw) to z.
-    if (this.viewMode === 'first-person') {
-      const yaw = this.avatarModel?.rotation.y ?? 0;
-      const forward = moveZ;
-      const strafe = moveX;
-      targetVx = (forward * Math.sin(yaw) + strafe * Math.cos(yaw)) * lngStep;
-      targetVy = (forward * Math.cos(yaw) - strafe * Math.sin(yaw)) * latStep;
-    }
+    // Movement relative to a look yaw in both view modes now: first-person's own
+    // mouse-look yaw (rotation.y itself, set directly by setFirstPersonYaw) for
+    // that mode, third-person's independent mouse-orbit yaw (setOrbitYaw, which
+    // never touches rotation.y) for this one -- camera-relative movement, GTA
+    // V-style. moveZ (w/s) is "forward" and moveX (a/d) is "strafe" relative to
+    // that yaw. Rotating a (forward, strafe) vector by yaw under this project's
+    // heading convention (0 = facing +z/north, increasing clockwise toward
+    // +x/east, per geoToPlane/the camera fix): forward contributes sin(yaw) to x
+    // and cos(yaw) to z; strafe-right contributes cos(yaw) to x and -sin(yaw) to
+    // z. Verified live already for first-person; reused as-is, not re-derived,
+    // for third-person.
+    const lookYaw = this.viewMode === 'first-person' ? (this.avatarModel?.rotation.y ?? 0) : this.orbitYaw;
+    const forward = moveZ;
+    const strafe = moveX;
+    targetVx = (forward * Math.sin(lookYaw) + strafe * Math.cos(lookYaw)) * lngStep;
+    targetVy = (forward * Math.cos(lookYaw) - strafe * Math.sin(lookYaw)) * latStep;
 
     const smoothing = 1 - Math.exp(-ACCELERATION_RATE * dt);
     this.velocity.x += (targetVx - this.velocity.x) * smoothing;
@@ -505,17 +526,27 @@ export class AvatarCharacter {
         this.position.lat += this.velocity.y * dt;
 
         if (this.useCharacterGLB) {
-          const targetAngle = Math.atan2(moveX, moveZ);
-          // Time-based, not a flat per-frame factor: turning was frame-rate dependent
-          // (slower on slow devices) while translation was already time-based. The
-          // exponential form makes the recurrence exact -- the facing at a given elapsed
-          // time is the same at any frame rate. Only the rate changes; the target and the
-          // linear-toward-target path (and its wrap behaviour) are untouched.
-          //
           // Skipped in first-person: rotation.y there is mouse-look yaw, applied
           // directly (and already correct) via setFirstPersonYaw -- lerping toward
           // a movement-derived angle here would fight the mouse every frame.
+          //
+          // Third-person turns to face wherever the character is *actually
+          // moving* -- the same (forward, strafe) intent used for velocity above,
+          // rotated by orbitYaw into world-space, then atan2'd back into a facing
+          // angle. Not the raw (moveX, moveZ) vector directly (that was a fixed
+          // compass direction, correct only when the camera couldn't orbit) and
+          // not orbitYaw itself (orbiting the camera alone must never turn the
+          // body) -- guaranteed here since this whole branch already only runs
+          // inside isMoving, which is false the instant no movement key is held.
           if (this.viewMode !== 'first-person') {
+            const worldMoveX = forward * Math.sin(this.orbitYaw) + strafe * Math.cos(this.orbitYaw);
+            const worldMoveZ = forward * Math.cos(this.orbitYaw) - strafe * Math.sin(this.orbitYaw);
+            const targetAngle = Math.atan2(worldMoveX, worldMoveZ);
+            // Time-based, not a flat per-frame factor: turning was frame-rate dependent
+            // (slower on slow devices) while translation was already time-based. The
+            // exponential form makes the recurrence exact -- the facing at a given elapsed
+            // time is the same at any frame rate. Only the rate changes; the target and the
+            // linear-toward-target path (and its wrap behaviour) are untouched.
             this.avatarModel.rotation.y = THREE.MathUtils.lerp(
               this.avatarModel.rotation.y,
               targetAngle,
