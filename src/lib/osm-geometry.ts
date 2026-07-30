@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { geoToPlane, GeoOrigin, METERS_PER_DEGREE_LAT } from './avatar-system';
+import { ElevationGrid, sampleHeight } from './terrain-elevation';
 
 const OVERPASS_API_URL = 'https://overpass-api.de/api/interpreter';
 
@@ -13,9 +14,13 @@ const FETCH_RADIUS_METERS = 65;
 export const ROAD_WIDTH_METERS = 5;
 
 /**
- * Small, distinct y-offsets so flat road/plot surfaces don't z-fight with the
- * ground plane (y=0) or each other -- this is the actual fix for flat-surface
- * flicker, not a road-width concern.
+ * Small, distinct offsets ABOVE the sampled terrain height at each vertex, so
+ * road/plot surfaces don't z-fight with the (possibly-displaced) ground plane
+ * or each other -- this is the actual fix for flat-surface flicker, not a
+ * road-width concern. Added on top of sampleHeight()'s result per vertex, not
+ * used as an absolute Y -- a flat absolute Y only ever looked right exactly at
+ * the spawn origin (where the terrain grid is rebased to 0), and floated or
+ * buried everywhere else once real elevation varied.
  */
 const ROAD_LAYER_Y = 0.02;
 const PLOT_LAYER_Y = 0.04;
@@ -106,11 +111,17 @@ export async function fetchOsmGeometry(
   }
 }
 
-function buildRoadsMesh(ways: OverpassWay[], origin: GeoOrigin): THREE.Mesh | null {
+function buildRoadsMesh(ways: OverpassWay[], origin: GeoOrigin, grid: ElevationGrid | null): THREE.Mesh | null {
   const positions: number[] = [];
   const indices: number[] = [];
   let vertexOffset = 0;
   const halfWidth = ROAD_WIDTH_METERS / 2;
+
+  // Real terrain height at this vertex's own (x, z), same sampleHeight() used
+  // for the ground plane, vegetation, and the character's own Y -- falls back
+  // to flat (0) if the terrain fetch hasn't resolved yet, same as the ground
+  // plane's own pre-terrain state.
+  const groundY = (x: number, z: number) => (grid ? sampleHeight(grid, x, z) : 0) + ROAD_LAYER_Y;
 
   for (const way of ways) {
     const nodes = way.geometry;
@@ -132,11 +143,20 @@ function buildRoadsMesh(ways: OverpassWay[], origin: GeoOrigin): THREE.Mesh | nu
       const nx = -dz / length;
       const nz = dx / length;
 
+      const ax0 = a.x + nx * halfWidth;
+      const az0 = a.z + nz * halfWidth;
+      const ax1 = a.x - nx * halfWidth;
+      const az1 = a.z - nz * halfWidth;
+      const bx0 = b.x + nx * halfWidth;
+      const bz0 = b.z + nz * halfWidth;
+      const bx1 = b.x - nx * halfWidth;
+      const bz1 = b.z - nz * halfWidth;
+
       positions.push(
-        a.x + nx * halfWidth, ROAD_LAYER_Y, a.z + nz * halfWidth,
-        a.x - nx * halfWidth, ROAD_LAYER_Y, a.z - nz * halfWidth,
-        b.x + nx * halfWidth, ROAD_LAYER_Y, b.z + nz * halfWidth,
-        b.x - nx * halfWidth, ROAD_LAYER_Y, b.z - nz * halfWidth
+        ax0, groundY(ax0, az0), az0,
+        ax1, groundY(ax1, az1), az1,
+        bx0, groundY(bx0, bz0), bz0,
+        bx1, groundY(bx1, bz1), bz1
       );
       indices.push(
         vertexOffset, vertexOffset + 1, vertexOffset + 2,
@@ -165,7 +185,7 @@ function buildRoadsMesh(ways: OverpassWay[], origin: GeoOrigin): THREE.Mesh | nu
   return mesh;
 }
 
-function buildPlotsMesh(ways: OverpassWay[], origin: GeoOrigin): THREE.Mesh | null {
+function buildPlotsMesh(ways: OverpassWay[], origin: GeoOrigin, grid: ElevationGrid | null): THREE.Mesh | null {
   const shapes: THREE.Shape[] = [];
 
   for (const way of ways) {
@@ -196,6 +216,22 @@ function buildPlotsMesh(ways: OverpassWay[], origin: GeoOrigin): THREE.Mesh | nu
   // translucent amber fill + outline is deliberately plain and meant to be
   // trivially swappable, not a design decision about that standard.
   const geometry = new THREE.ShapeGeometry(shapes);
+
+  // ShapeGeometry is flat -- every vertex's local z is 0, which after the
+  // rotation.x = -PI/2 below becomes a uniform world Y across the whole plot.
+  // Displace each vertex's local z individually instead, using the real
+  // terrain height at ITS OWN world (x, z) -- same sampleHeight() used for the
+  // ground plane, roads, vegetation, and the character's own Y. Local (x, y)
+  // -> world (x, z) here is (x, -y), the inverse of the shape.moveTo/lineTo
+  // authoring convention above; local z -> world Y is what we're writing.
+  const position = geometry.attributes.position;
+  for (let i = 0; i < position.count; i++) {
+    const worldX = position.getX(i);
+    const worldZ = -position.getY(i);
+    position.setZ(i, (grid ? sampleHeight(grid, worldX, worldZ) : 0) + PLOT_LAYER_Y);
+  }
+  position.needsUpdate = true;
+
   const material = new THREE.MeshBasicMaterial({
     color: 0xef9f27, // mirrors the Tailwind `accent` token (#EF9F27) -- not importable into a Three.js material, so duplicated here intentionally.
     transparent: true,
@@ -206,7 +242,6 @@ function buildPlotsMesh(ways: OverpassWay[], origin: GeoOrigin): THREE.Mesh | nu
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = PLOT_LAYER_Y;
 
   const outline = new THREE.LineSegments(
     new THREE.EdgesGeometry(geometry),
@@ -218,20 +253,67 @@ function buildPlotsMesh(ways: OverpassWay[], origin: GeoOrigin): THREE.Mesh | nu
 }
 
 /**
- * Pure -- takes already-parsed Overpass data and an origin, returns Three.js
- * meshes. Kept apart from fetchOsmGeometry so it's testable without a live
- * network call.
+ * Pure -- takes already-parsed Overpass data, an origin, and whatever terrain
+ * grid is available yet (null if that fetch hasn't resolved, since this and
+ * fetchTerrainElevation run in parallel with no ordering guarantee between
+ * them), returns Three.js meshes. Kept apart from fetchOsmGeometry so it's
+ * testable without a live network call.
+ *
+ * If grid is null here, call applyOsmHeights() once the terrain fetch does
+ * resolve to resettle these onto real elevation -- the same two-step pattern
+ * vegetation.ts's buildVegetation/applyVegetationHeights already use for
+ * exactly this "built before its height data existed" case.
  */
-export function buildOsmMeshes(data: OverpassResponse, origin: GeoOrigin): OsmMeshes {
+export function buildOsmMeshes(data: OverpassResponse, origin: GeoOrigin, grid: ElevationGrid | null): OsmMeshes {
   const elements = data.elements ?? [];
 
   const roadWays = elements.filter((el) => el.type === 'way' && el.tags?.highway);
   const buildingWays = elements.filter((el) => el.type === 'way' && el.tags?.building);
 
   return {
-    roads: buildRoadsMesh(roadWays, origin),
-    plots: buildPlotsMesh(buildingWays, origin),
+    roads: buildRoadsMesh(roadWays, origin, grid),
+    plots: buildPlotsMesh(buildingWays, origin, grid),
   };
+}
+
+/**
+ * Resamples every road/plot vertex's height against a newly-resolved terrain
+ * grid, in place. Only needed when buildOsmMeshes ran before the terrain
+ * fetch resolved (grid was null then) -- if terrain had already resolved by
+ * the time the OSM fetch landed, buildOsmMeshes already sampled real heights
+ * directly and there's nothing to redo. No-op per mesh that's null (OSM fetch
+ * failed or returned no matching data).
+ */
+export function applyOsmHeights(meshes: OsmMeshes, grid: ElevationGrid): void {
+  if (meshes.roads) {
+    const position = meshes.roads.geometry.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+      position.setY(i, sampleHeight(grid, position.getX(i), position.getZ(i)) + ROAD_LAYER_Y);
+    }
+    position.needsUpdate = true;
+    meshes.roads.geometry.computeVertexNormals();
+  }
+
+  if (meshes.plots) {
+    const position = meshes.plots.geometry.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+      const worldX = position.getX(i);
+      const worldZ = -position.getY(i);
+      position.setZ(i, sampleHeight(grid, worldX, worldZ) + PLOT_LAYER_Y);
+    }
+    position.needsUpdate = true;
+
+    // The outline is a one-time snapshot (EdgesGeometry) of the geometry taken
+    // at construction -- it doesn't track position updates on its own, so it
+    // needs rebuilding from the now-resampled geometry too.
+    const outline = meshes.plots.children.find(
+      (child): child is THREE.LineSegments => child instanceof THREE.LineSegments
+    );
+    if (outline) {
+      outline.geometry.dispose();
+      outline.geometry = new THREE.EdgesGeometry(meshes.plots.geometry);
+    }
+  }
 }
 
 /** Mirrors AvatarCharacter.dispose()'s traverse-and-dispose idiom for its own model. */

@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as THREE from 'three';
 import { AvatarCharacter, WALK_SPEED_MPS, GeoOrigin } from '../lib/avatar-system';
-import { fetchOsmGeometry, buildOsmMeshes, disposeOsmMeshes, OsmMeshes } from '../lib/osm-geometry';
+import { fetchOsmGeometry, buildOsmMeshes, applyOsmHeights, disposeOsmMeshes, OsmMeshes } from '../lib/osm-geometry';
 import { fetchTerrainElevation, buildTerrainGeometry, sampleHeight, ElevationGrid } from '../lib/terrain-elevation';
 import { buildVegetation, applyVegetationHeights, disposeVegetation } from '../lib/vegetation';
 
@@ -291,7 +291,11 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     let osmCancelled = false;
     fetchOsmGeometry(sceneOrigin).then((data) => {
       if (osmCancelled) return;
-      const meshes = buildOsmMeshes(data, sceneOrigin);
+      // Whatever terrain grid is available *right now* -- these two fetches run
+      // in parallel with no ordering guarantee, so this could be the real grid
+      // (terrain already resolved) or still null (it hasn't yet, in which case
+      // the terrain fetch's own callback below re-heights these once it does).
+      const meshes = buildOsmMeshes(data, sceneOrigin, terrainGridRef.current);
       if (meshes.roads) scene.add(meshes.roads);
       if (meshes.plots) scene.add(meshes.plots);
       osmMeshes = meshes;
@@ -311,6 +315,13 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       ground.geometry.dispose();
       ground.geometry = displaced;
       applyVegetationHeights(vegetation, grid);
+      // Only matters if the OSM fetch already resolved (and built flat, since
+      // terrainGridRef.current was still null then) before this one did --
+      // if OSM hasn't resolved yet, osmMeshes is still null and buildOsmMeshes
+      // will sample this same grid directly once it does.
+      if (osmMeshes) {
+        applyOsmHeights(osmMeshes, grid);
+      }
     });
 
     const avatar = new AvatarCharacter(scene, startLocation, avatarUrl, {
