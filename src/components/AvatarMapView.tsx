@@ -26,6 +26,17 @@ const MOUSE_LOOK_SENSITIVITY = 0.0025;
 const PITCH_LIMIT_RAD = THREE.MathUtils.degToRad(85);
 
 /**
+ * Rate of exponential approach for the third-person camera's position toward
+ * its orbit target, per second. Derived like avatar-system.ts's ACCELERATION_RATE
+ * and TURN_RATE: chosen so the per-frame smoothing factor lands at the original
+ * flat 0.05 at 60fps (1 - e^(-3.08/60) ~= 0.05, i.e. -60*ln(0.95)), keeping the
+ * same follow feel while making it frame-rate independent. This was the one
+ * remaining flat, non-deltaTime lerp in the camera/movement system -- the
+ * rotation-turn lerp already got this same treatment (see TURN_RATE).
+ */
+const CAMERA_FOLLOW_RATE = 3.08;
+
+/**
  * Comfortably outside the -50/+50m terrain footprint and the camera's own 1000m
  * far-clip plane, so the dome is never clipped and the camera (which never
  * leaves the walkable area) is always well inside it.
@@ -649,7 +660,7 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
             const desiredZ = pivotZ - Math.cos(orbitYaw) * Math.cos(orbitPitch) * targetDistance;
             const desiredY = pivotY + Math.sin(orbitPitch) * targetDistance;
 
-            const smoothing = 0.05;
+            const smoothing = 1 - Math.exp(-CAMERA_FOLLOW_RATE * deltaTime);
             camera.position.x += (desiredX - camera.position.x) * smoothing;
             camera.position.y += (desiredY - camera.position.y) * smoothing;
             camera.position.z += (desiredZ - camera.position.z) * smoothing;
