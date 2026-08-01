@@ -30,6 +30,14 @@ const GRID_HALF_EXTENT_METERS = 50;
 /** Row/col index of the grid's centre point -- exact since GRID_SIZE is odd. */
 const CENTER_INDEX = Math.floor(GRID_SIZE / 2);
 
+/**
+ * Multiplier applied to real elevation variance after rebasing to the spawn
+ * origin. 1.0 = true real-world elevation (the original intensity). Lower
+ * values flatten the terrain while keeping its real shape/contours -- this
+ * is a visual-intensity dial, not a removal of the real elevation system.
+ */
+const ELEVATION_INTENSITY = 0.25; // starting guess, tune after a live look
+
 export interface ElevationGrid {
   size: number;
   halfExtent: number;
@@ -116,7 +124,7 @@ export async function fetchTerrainElevation(origin: GeoOrigin): Promise<Elevatio
     // level -- displacing by raw elevation would put the whole ground plane
     // (and, via sampleHeight, the character) ~1750 units away from the camera
     // and lighting that were set up assuming a near-zero origin.
-    const values = raw.map((v) => v - originElevation);
+    const values = raw.map((v) => (v - originElevation) * ELEVATION_INTENSITY);
 
     return { size: GRID_SIZE, halfExtent: GRID_HALF_EXTENT_METERS, values };
   } catch (error) {
