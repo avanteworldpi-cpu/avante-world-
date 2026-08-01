@@ -14,6 +14,28 @@ interface MessagesPanelProps {
   onClose: () => void;
 }
 
+/**
+ * Shared by both render paths below (list/new and conversation) so the two never
+ * drift out of sync with each other.
+ *
+ * Below md: a partial-height bottom sheet, not the side panel -- a full-height
+ * sheet was already explicitly rejected in an earlier mockup pass for breaking
+ * the "presence in the world" feel, so World stays visible above it rather than
+ * getting covered or dimmed (no backdrop). `bottom-16` clears NavRail's own
+ * mobile bar (h-16) so the sheet sits above it, not under it. h-[45vh] is a
+ * first guess, not a pinned value -- the mockup phase never settled on an exact
+ * height, so this wants a visual pass to confirm 45% actually feels right
+ * against a real phone viewport rather than being re-guessed blind.
+ *
+ * At md+: the original side panel, unchanged -- a flex sibling of `<main>`
+ * rather than a positioned overlay, exactly as before this pass.
+ */
+const MESSAGES_PANEL_CLASSES =
+  'fixed inset-x-0 bottom-16 z-50 h-[45vh] rounded-t-xl border-t border-dusk-800 shadow-2xl ' +
+  'md:static md:inset-auto md:bottom-auto md:z-auto md:h-auto md:rounded-none md:shadow-none ' +
+  'md:w-80 md:shrink-0 md:border-t-0 md:border-l ' +
+  'bg-dusk-950 flex flex-col';
+
 /** Compact relative time for a thread-list row, e.g. "2m", "3h", "5d". */
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -81,7 +103,7 @@ export function MessagesPanel({ onClose }: MessagesPanelProps) {
 
   if (view.mode === 'conversation') {
     return (
-      <aside className="w-80 shrink-0 bg-dusk-950 border-l border-dusk-800 flex flex-col">
+      <aside className={MESSAGES_PANEL_CLASSES}>
         <ConversationView
           conversationId={view.conversationId}
           otherUser={view.otherUser}
@@ -92,7 +114,7 @@ export function MessagesPanel({ onClose }: MessagesPanelProps) {
   }
 
   return (
-    <aside className="w-80 shrink-0 bg-dusk-950 border-l border-dusk-800 flex flex-col">
+    <aside className={MESSAGES_PANEL_CLASSES}>
       <div className="h-14 shrink-0 px-4 flex items-center justify-between border-b border-dusk-800">
         {view.mode === 'new' ? (
           <>

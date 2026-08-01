@@ -33,10 +33,18 @@ export function AppShell({ userEmail, locationLabel, onSignOut, accountTier, ren
   const showTabOverlay = !isWorld || settingsOpen;
 
   return (
-    <div className="w-full h-screen flex bg-dusk-900 overflow-hidden">
+    /*
+     * flex-col-reverse below md, flex-row at md+: NavRail is the first child either
+     * way, so this alone is what moves it from the bottom of a stacked mobile
+     * layout to the left edge of a desktop row, with no JS breakpoint check and no
+     * change to DOM/JSX order. NavRail itself decides which of its two rendered
+     * variants (side rail vs bottom bar) is actually visible at a given width; this
+     * container only decides where that visible one ends up.
+     */
+    <div className="w-full h-screen flex flex-col-reverse md:flex-row bg-dusk-900 overflow-hidden">
       <NavRail activeTab={activeTab} onSelect={setActiveTab} showMeridian={showMeridian} />
 
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         <TopBar
           userEmail={userEmail}
           locationLabel={locationLabel}

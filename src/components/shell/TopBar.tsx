@@ -25,9 +25,15 @@ export function TopBar({
         Avante World
       </span>
 
-      {/* Typing here must not drive the character. AvatarCharacter ignores key events
+      {/* Hidden below md, not reworked into a mobile search flow -- that's a new
+          feature (an icon-triggered search screen/overlay), not a layout fix, and
+          out of scope for this pass. The bar simply doesn't fit next to the nav/
+          messages/settings icons at phone widths, so it's dropped rather than left
+          half-broken; it comes back unchanged at md+.
+
+          Typing here must not drive the character. AvatarCharacter ignores key events
           whose target is a text field, so w/a/s/d and space reach this input intact. */}
-      <div className="relative flex-1 max-w-md">
+      <div className="hidden md:block relative flex-1 max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dusk-400 pointer-events-none" />
         <input
           type="text"
@@ -43,7 +49,10 @@ export function TopBar({
         />
       </div>
 
-      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-dusk-900 border border-dusk-800 text-xs text-dusk-300 whitespace-nowrap">
+      {/* Hidden below md alongside search, same reasoning -- and redundant there
+          anyway, since AvatarMapView's own COORDINATES readout already shows this
+          inside the World pane itself. */}
+      <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-dusk-900 border border-dusk-800 text-xs text-dusk-300 whitespace-nowrap">
         {/* Muted, not accent: a decorative pin isn't one of the three sanctioned
             accent contexts, and amber here would start to spread. */}
         <MapPin className="w-3.5 h-3.5 text-dusk-400" />
