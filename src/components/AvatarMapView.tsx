@@ -6,7 +6,6 @@ import * as THREE from 'three';
 import { AvatarCharacter, WALK_SPEED_MPS, GeoOrigin } from '../lib/avatar-system';
 import { fetchOsmGeometry, buildOsmMeshes, applyOsmHeights, disposeOsmMeshes, OsmMeshes } from '../lib/osm-geometry';
 import { fetchTerrainElevation, buildTerrainGeometry, sampleHeight, ElevationGrid } from '../lib/terrain-elevation';
-import { buildVegetation, applyVegetationHeights, disposeVegetation } from '../lib/vegetation';
 
 /** The minimap is a readout; re-centring it every frame is needless work. */
 const MINIMAP_PAN_INTERVAL_MS = 200;
@@ -282,15 +281,6 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
     ground.receiveShadow = true;
     scene.add(ground);
 
-    // Decorative only -- no OSM greenery data, no collision. Built on flat ground
-    // (null grid) so trees appear instantly rather than waiting on the terrain
-    // fetch below; applyVegetationHeights() resettles them onto real elevation
-    // once/if that fetch resolves, the same two-step the ground geometry itself
-    // goes through.
-    const vegetation = buildVegetation(null);
-    scene.add(vegetation.trunks);
-    scene.add(vegetation.foliage);
-
     // Real-world roads/plots, fetched from OSM live. Fire-and-handle, not awaited:
     // the scene/ground/avatar below are already set up synchronously before this
     // resolves. `cancelled` guards against adding meshes to a scene this same
@@ -325,7 +315,6 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
       const displaced = buildTerrainGeometry(grid);
       ground.geometry.dispose();
       ground.geometry = displaced;
-      applyVegetationHeights(vegetation, grid);
       // Only matters if the OSM fetch already resolved (and built flat, since
       // terrainGridRef.current was still null then) before this one did --
       // if OSM hasn't resolved yet, osmMeshes is still null and buildOsmMeshes
@@ -709,9 +698,6 @@ export function AvatarMapView({ avatarUrl, startLocation, active = true }: Avata
         disposeOsmMeshes(osmMeshes);
       }
       terrainCancelled = true;
-      scene.remove(vegetation.trunks);
-      scene.remove(vegetation.foliage);
-      disposeVegetation(vegetation);
       scene.remove(sky);
       sky.geometry.dispose();
       (sky.material as THREE.ShaderMaterial).dispose();
